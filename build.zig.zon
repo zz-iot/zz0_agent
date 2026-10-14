@@ -1,0 +1,20 @@
+.{
+    .name = .zz0_agent,
+    .version = "0.0.0",
+    .fingerprint = 0x0b06a44d9bdc4325,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .zz0_client = .{
+            .path = "../zz0_client",
+        },
+        .zidl_rt = .{
+            .path = "../zidl/packages/zidl-rt",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "README.md",
+    },
+}
