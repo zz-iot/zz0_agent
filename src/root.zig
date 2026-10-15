@@ -18,9 +18,9 @@ pub const CounterStatusStats = struct {
     decoded: u64 = 0,
     invalid: u64 = 0,
     last_counter: u32 = 0,
-    last_board_buf: [16]u8 = [_]u8{0} ** 16,
+    last_board_buf: [16]u8 = @splat(0),
     last_board_len: usize = 0,
-    last_payload_buf: [8]u8 = [_]u8{0} ** 8,
+    last_payload_buf: [8]u8 = @splat(0),
     last_payload_len: usize = 0,
 
     pub fn lastBoard(self: *const CounterStatusStats) []const u8 {
@@ -142,7 +142,8 @@ pub const Agent = struct {
         if (!std.mem.eql(u8, &write.object_id, &demo.datawriter.object_id)) return null;
 
         var reader = try zidl_rt.CdrReader.init(write.serialized_data);
-        const sample = try counter_types.CounterStatus.deserialize(&reader, std.heap.page_allocator);
+        var sample: counter_types.CounterStatus = undefined;
+        try counter_types.CounterStatus.deserializeInto(&sample, &reader, std.heap.page_allocator);
         self.counter_status_stats.record(sample);
         return sample;
     }
@@ -290,7 +291,7 @@ test "agent rejects datagram without a supported submessage" {
         .client_key = .{ 0xaa, 0xbb, 0xcc, 0xdd },
         .session_id = 0x81,
     }).encodeMessage(&request);
-    request[4] = @intFromEnum(xrce.SubmessageId.status);
+    request[4] = @backingInt(xrce.SubmessageId.status);
     request[6] = 0;
     request[7] = 0;
 
