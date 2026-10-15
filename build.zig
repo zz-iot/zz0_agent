@@ -3,11 +3,15 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const zidl_dep = b.dependency("zidl", .{
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
     const zidl_exe = b.option(
         []const u8,
         "zidl",
         "Path to a prebuilt zidl executable",
-    ) orelse "../zidl/zig-out/bin/zidl";
+    );
     const counter_idl = b.option(
         []const u8,
         "counter-idl",
@@ -18,12 +22,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const zidl_rt_dep = b.dependency("zidl_rt", .{
+    const zidl_rt_mod = b.createModule(.{
+        .root_source_file = zidl_dep.path("packages/zidl-rt/src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const gen_counter_types = b.addSystemCommand(&.{ zidl_exe, "-b", "zig" });
+    const gen_counter_types = if (zidl_exe) |path| b.addSystemCommand(&.{path}) else b.addRunArtifact(zidl_dep.artifact("zidl"));
+    gen_counter_types.addArgs(&.{ "-b", "zig" });
     gen_counter_types.addArgs(&.{
         "--profile",               "xrce",
         "--no-typeobject-support", "-o",
@@ -36,7 +42,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "zidl_rt", .module = zidl_rt_dep.module("zidl-rt") },
+            .{ .name = "zidl_rt", .module = zidl_rt_mod },
         },
     });
 
@@ -46,7 +52,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "zz0_client", .module = zz0_client_dep.module("zz0_client") },
-            .{ .name = "zidl_rt", .module = zidl_rt_dep.module("zidl-rt") },
+            .{ .name = "zidl_rt", .module = zidl_rt_mod },
             .{ .name = "counter_types", .module = counter_types_mod },
         },
     });

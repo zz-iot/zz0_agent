@@ -34,9 +34,10 @@ Runtime observability is optional:
 
 ## Build and run
 
-Use Zig 0.16.0. The current development layout expects sibling checkouts of
-`zz0_client`, `zidl`, and `zz0-pico-demo`. Build `zidl` first; the agent uses
-`../zidl/zig-out/bin/zidl` to generate its demo payload decoder.
+Use Zig 0.17.0. The current development layout expects sibling checkouts of
+`zz0_client` and `zz0-pico-demo`. The build fetches the pinned zidl 0.3.21
+release and builds its host generator automatically; the payload decoder uses
+the runtime from the same package.
 
 ```sh
 zig build

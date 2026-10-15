@@ -136,7 +136,7 @@ pub const Resource = struct {
 };
 
 pub const ResourceTable = struct {
-    entries: [max_resources]Resource = [_]Resource{.{}} ** max_resources,
+    entries: [max_resources]Resource = @splat(.{}),
     len: usize = 0,
 
     pub fn createByReference(
@@ -202,7 +202,7 @@ pub const WriteStats = struct {
     last_request_id: xrce.RequestId = .{ 0, 0 },
     last_object_id: xrce.ObjectId = .{ 0, 0 },
     last_payload_len: usize = 0,
-    objects: [max_write_objects]ObjectWriteStats = [_]ObjectWriteStats{.{}} ** max_write_objects,
+    objects: [max_write_objects]ObjectWriteStats = @splat(.{}),
 
     pub fn record(self: *WriteStats, write: xrce.DecodedWriteData) void {
         self.total_writes += 1;
