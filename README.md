@@ -2,12 +2,12 @@
 
 Host-side DDS-XRCE agent for Zenzen Zero.
 
-The initial implementation handles the first XRCE session smoke test over UDP:
-`CREATE_CLIENT` request bytes in, `STATUS_AGENT` response bytes out. DDS bridging
-comes after this protocol slice is stable.
+The UDP server supports up to eight demo clients. `CREATE_CLIENT` establishes a
+client key, peer address and session ID; subsequent datagrams are routed to that
+client. DDS bridging remains a separate development step.
 
 It also decodes by-reference `CREATE` requests, validates the requested reference
-against a configured catalog, records accepted resources in an in-memory table,
+against a configured catalog, records accepted resources in a per-client in-memory table,
 and returns XRCE `STATUS` results for OK, matched, mismatch, unknown reference,
 and resource exhaustion cases. Actual DDS resource creation still needs to be
 wired to `zzdds`.
@@ -25,11 +25,11 @@ a demo validation step, not the final generic XRCE-to-DDS forwarding model.
 Runtime observability is optional:
 
 - `--write-log=none` disables per-sample output
-- `--write-log=summary` prints object id, payload length, and total write count
+- `--write-log=summary` prints client key, object id, payload length, and per-client write count
 - For the Pico demo datawriter, `--write-log=summary` prints decoded
   `CounterStatus` fields.
 - `--write-log=hex` prints a bounded hex dump of each payload
-- `--stats-every=N` prints aggregate counters every `N` accepted writes
+- `--stats-every=N` prints per-client counters every `N` accepted writes
 - `--hex-bytes=N` limits the hex dump size for `--write-log=hex`
 
 ## Build and run
@@ -48,3 +48,27 @@ zig build test
 The UDP listener uses port 8888. Override the generator with
 `-Dzidl=/path/to/zidl` and the demo IDL with `-Dcounter-idl=/path/to/counter_types.idl`.
 The agent currently validates and logs XRCE samples; DDS forwarding is pending.
+
+## Demo client isolation
+
+Each client has its own resources and decode/write counters. Different clients
+may use the same object IDs and session ID. The UDP peer plus session ID routes
+messages that omit the client key. A valid CREATE_CLIENT starts a fresh session
+for that key, clearing only that client's resources/counters and updating its
+peer address; a reboot or port change therefore reuses its existing slot.
+Conflicting keys on the same peer/session are rejected. Unknown sessions and
+malformed datagrams do not terminate the server.
+
+This is a bounded, unauthenticated demo registry, not a complete XRCE session
+implementation: keys identify clients rather than authenticate them, slots have
+no idle expiry, and a ninth distinct key is rejected until the agent restarts.
+Using the same key on two active boards causes them to replace each other's
+session. Use the MAC-derived identities in the current Pico firmware.
+
+`zig build test` includes the protocol tests, UDP exchanges, overlapping-object
+isolation, reconnect behavior, malformed-packet handling, and client limits.
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for current scope, interoperability goals and the
+planned path toward DDS bridging, reliable sessions and subscriptions.

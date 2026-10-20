@@ -45,6 +45,7 @@ pub const CounterStatusStats = struct {
 };
 
 pub const Agent = struct {
+    client_key: [4]u8 = @splat(0),
     vendor_id: [2]u8 = xrce.vendor_id_zenzen,
     reference_catalog: resources.ReferenceCatalog = resources.default_reference_catalog,
     resource_table: resources.ResourceTable = .{},
@@ -156,8 +157,9 @@ pub const Agent = struct {
             .summary => {
                 if (counter_status) |sample| {
                     std.debug.print(
-                        "zz0_agent: CounterStatus object={x:0>2}{x:0>2} counter={d} board={s} payload_len={d} total_writes={d}\n",
+                        "zz0_agent: client={x} CounterStatus object={x:0>2}{x:0>2} counter={d} board={s} payload_len={d} total_writes={d}\n",
                         .{
+                            self.client_key,
                             write.object_id[0],
                             write.object_id[1],
                             sample.counter,
@@ -168,8 +170,9 @@ pub const Agent = struct {
                     );
                 } else {
                     std.debug.print(
-                        "zz0_agent: WRITE_DATA object={x:0>2}{x:0>2} payload_len={d} total_writes={d}\n",
+                        "zz0_agent: client={x} WRITE_DATA object={x:0>2}{x:0>2} payload_len={d} total_writes={d}\n",
                         .{
+                            self.client_key,
                             write.object_id[0],
                             write.object_id[1],
                             write.serialized_data.len,
@@ -182,8 +185,9 @@ pub const Agent = struct {
                 const limit = @min(write.serialized_data.len, self.hex_bytes);
                 if (counter_status) |sample| {
                     std.debug.print(
-                        "zz0_agent: CounterStatus object={x:0>2}{x:0>2} counter={d} board={s} payload={x} cdr_hex={x}\n",
+                        "zz0_agent: client={x} CounterStatus object={x:0>2}{x:0>2} counter={d} board={s} payload={x} cdr_hex={x}\n",
                         .{
+                            self.client_key,
                             write.object_id[0],
                             write.object_id[1],
                             sample.counter,
@@ -194,8 +198,9 @@ pub const Agent = struct {
                     );
                 } else {
                     std.debug.print(
-                        "zz0_agent: WRITE_DATA object={x:0>2}{x:0>2} payload_len={d} hex={x}\n",
+                        "zz0_agent: client={x} WRITE_DATA object={x:0>2}{x:0>2} payload_len={d} hex={x}\n",
                         .{
+                            self.client_key,
                             write.object_id[0],
                             write.object_id[1],
                             write.serialized_data.len,
@@ -209,8 +214,9 @@ pub const Agent = struct {
         if (self.stats_every) |every| {
             if (every != 0 and self.write_stats.total_writes % every == 0) {
                 std.debug.print(
-                    "zz0_agent: WRITE_STATS total_writes={d} total_bytes={d} object={x:0>2}{x:0>2} object_writes={d} object_bytes={d}\n",
+                    "zz0_agent: client={x} WRITE_STATS total_writes={d} total_bytes={d} object={x:0>2}{x:0>2} object_writes={d} object_bytes={d}\n",
                     .{
+                        self.client_key,
                         self.write_stats.total_writes,
                         self.write_stats.total_bytes,
                         write.object_id[0],
@@ -226,8 +232,9 @@ pub const Agent = struct {
     fn observeInvalidCounterStatus(self: *Agent, write: xrce.DecodedWriteData, err: anyerror) void {
         if (self.write_log_mode == .none) return;
         std.debug.print(
-            "zz0_agent: CounterStatus decode failed object={x:0>2}{x:0>2} payload_len={d} error={s}\n",
+            "zz0_agent: client={x} CounterStatus decode failed object={x:0>2}{x:0>2} payload_len={d} error={s}\n",
             .{
+                self.client_key,
                 write.object_id[0],
                 write.object_id[1],
                 write.serialized_data.len,
@@ -681,4 +688,9 @@ fn encodeCounterStatusForTest(out: []u8, sample: counter_types.CounterStatus) ![
     if (bytes.items.len > out.len) return error.BufferTooSmall;
     @memcpy(out[0..bytes.items.len], bytes.items);
     return out[0..bytes.items.len];
+}
+
+test {
+    _ = @import("udp.zig");
+    _ = @import("resources.zig");
 }
