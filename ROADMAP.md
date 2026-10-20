@@ -22,6 +22,12 @@ implementation, not a general-purpose or fully conformant XRCE agent.
 
 ## 1. Establish interoperability and scope
 
+The pinned eProsima client test now covers the limited request/sample subset
+documented in `interop/README.md`. CI configuration is included; remote CI
+execution is not yet evidence. The normative review and remaining compliance
+gaps are recorded in `interop/spec-audit.md`; eProsima-specific login encoding
+is opt-in. Remaining:
+
 - Maintain a support matrix against the OMG DDS-XRCE specification, documenting
   supported messages, representations, session/stream behavior and limits.
 - Exercise an independent XRCE client against this agent, starting with
@@ -65,6 +71,11 @@ Application retries alone must not be presented as XRCE reliable-stream support.
 - Validate a complete bidirectional embedded application.
 
 ## Later, driven by applications
+
+Loadable generated typesupport bundles (type names, serialization/key-hash hooks
+and versioned registration entrypoints) could later let the agent support new
+application IDL without rebuilding. They are not a prerequisite for the known-type
+bridge.
 
 Broader entity representations, fragmentation, additional transports and richer
 QoS support can expand the supported profile. Runtime type registration,

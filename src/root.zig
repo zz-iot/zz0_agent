@@ -45,6 +45,7 @@ pub const CounterStatusStats = struct {
 };
 
 pub const Agent = struct {
+    handshake_encoding: xrce.HandshakeEncoding = .omg_1_0,
     client_key: [4]u8 = @splat(0),
     vendor_id: [2]u8 = xrce.vendor_id_zenzen,
     reference_catalog: resources.ReferenceCatalog = resources.default_reference_catalog,
@@ -62,11 +63,12 @@ pub const Agent = struct {
         while (try iterator.next()) |submessage| {
             switch (submessage.header.id) {
                 .create_client => {
-                    const create = try xrce.decodeCreateClient(message.header, submessage);
+                    const create = try xrce.decodeCreateClientWithEncoding(message.header, submessage, self.handshake_encoding);
                     return try (xrce.StatusAgent{
                         .session_id = create.session_id,
                         .sequence_nr = create.header.sequence_nr,
                         .vendor_id = self.vendor_id,
+                        .handshake_encoding = self.handshake_encoding,
                     }).encodeMessage(output);
                 },
                 .create => {
@@ -85,7 +87,7 @@ pub const Agent = struct {
                         .sequence_nr = message.header.sequence_nr,
                         .request = .{
                             .request_id = create.request_id,
-                            .object_id = create.object_id,
+                            .object_id = create.request_object_id,
                         },
                         .result = result,
                     }).encodeMessage(output);
@@ -142,9 +144,16 @@ pub const Agent = struct {
     ) !?counter_types.CounterStatus {
         if (!std.mem.eql(u8, &write.object_id, &demo.datawriter.object_id)) return null;
 
-        var reader = try zidl_rt.CdrReader.init(write.serialized_data);
+        // XRCE DATA carries plain CDR, without a DDS encapsulation header.
+        // Adapt to zidl's reader locally; do not guess from sample bytes.
+        var framed: [516]u8 = undefined;
+        if (write.serialized_data.len > framed.len - 4) return error.PayloadTooLarge;
+        @memcpy(framed[0..4], &[_]u8{ 0, 7, 0, 0 });
+        @memcpy(framed[4..][0..write.serialized_data.len], write.serialized_data);
+        var reader = try zidl_rt.CdrReader.init(framed[0 .. write.serialized_data.len + 4]);
         var sample: counter_types.CounterStatus = undefined;
         try counter_types.CounterStatus.deserializeInto(&sample, &reader, std.heap.page_allocator);
+        if (reader.pos != reader.data.len) return error.TrailingSampleBytes;
         self.counter_status_stats.record(sample);
         return sample;
     }
@@ -682,8 +691,7 @@ fn encodeCounterStatusForTest(out: []u8, sample: counter_types.CounterStatus) ![
     var bytes = std.ArrayListUnmanaged(u8).empty;
     defer bytes.deinit(allocator);
 
-    var writer = zidl_rt.CdrWriter(.xcdr1).init(&bytes, allocator);
-    try writer.writeEncapHeader();
+    var writer = zidl_rt.CdrWriter(.xcdr2).init(&bytes, allocator);
     try counter_types.CounterStatus.serialize(&writer, sample);
     if (bytes.items.len > out.len) return error.BufferTooSmall;
     @memcpy(out[0..bytes.items.len], bytes.items);
@@ -693,4 +701,25 @@ fn encodeCounterStatusForTest(out: []u8, sample: counter_types.CounterStatus) ![
 test {
     _ = @import("udp.zig");
     _ = @import("resources.zig");
+}
+
+test "CREATE prefix derives resource identity while STATUS preserves correlation bytes" {
+    const demo_entity = demo.participant;
+    var request: [128]u8 = undefined;
+    const n = try (xrce.CreateByReference{
+        .session_id = 0x81,
+        .sequence_nr = 0,
+        .request_id = .{ 0, 1 },
+        .object_prefix = demo_entity.object_prefix,
+        .object_kind = demo_entity.object_kind,
+        .reference = demo_entity.reference,
+    }).encodeMessage(&request);
+    request[11] &= 0xf0; // §7.7.8 also permits the prefix in a CREATE request.
+    var agent: Agent = .{};
+    var response: [128]u8 = undefined;
+    const m = try agent.handleDatagram(request[0..n], &response);
+    const status = try xrce.decodeStatusMessage(response[0..m]);
+    try std.testing.expectEqual(xrce.StatusValue.ok, status.result.status);
+    try std.testing.expectEqualSlices(u8, request[10..12], &status.related_request.object_id);
+    try std.testing.expect(agent.resource_table.lookup(demo_entity.object_id) != null);
 }

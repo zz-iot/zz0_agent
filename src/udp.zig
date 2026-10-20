@@ -23,7 +23,7 @@ pub const ClientSessions = struct {
         var iterator = message.submessages();
         const first = (try iterator.next()) orelse return error.NoSupportedSubmessage;
         if (first.header.id == .create_client) {
-            const create = try root.xrce.decodeCreateClient(message.header, first);
+            const create = try root.xrce.decodeCreateClientWithEncoding(message.header, first, self.template.handshake_encoding);
             if (create.session_id <= root.xrce.session_id_none_without_client_key) return error.UnsupportedSession;
             if (std.mem.eql(u8, &create.client_key, &@as([4]u8, @splat(0)))) return error.InvalidClientKey;
 
@@ -38,6 +38,7 @@ pub const ClientSessions = struct {
             }
             const index = chosen orelse free orelse return error.ClientCapacityExceeded;
             var agent = root.Agent{
+                .handshake_encoding = self.template.handshake_encoding,
                 .client_key = create.client_key,
                 .vendor_id = self.template.vendor_id,
                 .reference_catalog = self.template.reference_catalog,
@@ -250,8 +251,7 @@ fn writeTestSample(sessions: *ClientSessions, peer: net.IpAddress, board: []cons
     var arena = std.heap.FixedBufferAllocator.init(&storage);
     // The wire sample has bounded fields; the arena is only the writer buffer.
     var bytes = std.ArrayListUnmanaged(u8).empty;
-    var writer = rt.CdrWriter(.xcdr1).init(&bytes, arena.allocator());
-    try writer.writeEncapHeader();
+    var writer = rt.CdrWriter(.xcdr2).init(&bytes, arena.allocator());
     try Sample.serialize(&writer, .{
         .counter = counter,
         .board = try rt.BoundedArray(u8, 16).fromSlice(board),

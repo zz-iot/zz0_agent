@@ -1,0 +1,61 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '30 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      client_ref:
+        description: 'Override the pinned zz0_client commit with a branch, tag or SHA'
+        default: ''
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test-and-independent-interop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zz0_agent
+      - uses: actions/checkout@v4
+        with:
+          repository: zz-iot/zz0_client
+          ref: ${{ inputs.client_ref || '90f56a2f1f62263ae85731f485cf9cd4cc0ca448' }}
+          path: zz0_client
+      - uses: actions/checkout@v4
+        with:
+          repository: zz-iot/zz0-pico-demo
+          ref: bd89de0893b8ad85aadf372d4e7e1f5105247ab2
+          path: zz0-pico-demo
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+      - name: Format and unit tests
+        working-directory: zz0_agent
+        run: |
+          zig fmt --check build.zig src
+          zig build test
+          zig build test -Doptimize=ReleaseSafe
+          zig build -Doptimize=ReleaseSafe
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/xrce-peers
+          key: xrce-agent-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('zz0_agent/interop/build_peers.py') }}
+      - name: Build pinned independent client
+        working-directory: zz0_agent
+        run: python3 interop/build_peers.py --work "$RUNNER_TEMP/xrce-peers"
+      - name: Verify independent requests and sample acceptance
+        working-directory: zz0_agent
+        run: python3 interop/run.py --agent zig-out/bin/zz0_agent --prefix "$RUNNER_TEMP/xrce-peers/install" --logs "$RUNNER_TEMP/interop-logs"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: independent-interop-logs
+          path: ${{ runner.temp }}/interop-logs

@@ -8,8 +8,9 @@ pub fn main(init: std.process.Init) !void {
     defer threaded.deinit();
     const io = threaded.io();
 
-    const bind_address = std.Io.net.IpAddress{ .ip4 = .unspecified(8888) };
+    const bind_address = std.Io.net.IpAddress{ .ip4 = .unspecified(config.port) };
     var server = try zz0_agent.udp.UdpServer.bind(io, bind_address, .{
+        .handshake_encoding = config.handshake_encoding,
         .write_log_mode = config.write_log_mode,
         .stats_every = config.stats_every,
         .hex_bytes = config.hex_bytes,
@@ -21,6 +22,8 @@ pub fn main(init: std.process.Init) !void {
 }
 
 const Config = struct {
+    handshake_encoding: zz0_agent.xrce.HandshakeEncoding = .omg_1_0,
+    port: u16 = 8888,
     write_log_mode: zz0_agent.WriteLogMode = .none,
     stats_every: ?u64 = null,
     hex_bytes: usize = 32,
@@ -35,6 +38,10 @@ fn parseArgs(args: std.process.Args, allocator: std.mem.Allocator) !Config {
         if (std.mem.eql(u8, arg, "--help")) {
             printUsage();
             std.process.exit(0);
+        } else if (std.mem.startsWith(u8, arg, "--handshake=")) {
+            config.handshake_encoding = std.meta.stringToEnum(zz0_agent.xrce.HandshakeEncoding, arg["--handshake=".len..]) orelse return error.InvalidHandshakeEncoding;
+        } else if (std.mem.startsWith(u8, arg, "--port=")) {
+            config.port = try std.fmt.parseUnsigned(u16, arg["--port=".len..], 10);
         } else if (std.mem.startsWith(u8, arg, "--write-log=")) {
             const value = arg["--write-log=".len..];
             config.write_log_mode = if (std.mem.eql(u8, value, "none"))
@@ -59,7 +66,7 @@ fn parseArgs(args: std.process.Args, allocator: std.mem.Allocator) !Config {
 
 fn printUsage() void {
     std.debug.print(
-        \\usage: zz0_agent [--write-log=none|summary|hex] [--stats-every=N] [--hex-bytes=N]
+        \\usage: zz0_agent [--handshake=omg_1_0|eprosima_v3] [--port=N] [--write-log=none|summary|hex] [--stats-every=N] [--hex-bytes=N]
         \\
     , .{});
 }

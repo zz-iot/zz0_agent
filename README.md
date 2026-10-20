@@ -12,6 +12,9 @@ and returns XRCE `STATUS` results for OK, matched, mismatch, unknown reference,
 and resource exhaustion cases. Actual DDS resource creation still needs to be
 wired to `zzdds`.
 
+The eProsima empty-XML publisher convention is also accepted for the demo participant;
+arbitrary XML entity creation remains unsupported.
+
 The current payload slice also accepts XRCE `WRITE_DATA` requests for created
 XRCE datawriters, updates in-memory counters, and returns `STATUS` replies for
 success, unknown object ids, and object-kind mismatches.
@@ -45,7 +48,8 @@ zig build test
 ./zig-out/bin/zz0_agent --write-log=summary
 ```
 
-The UDP listener uses port 8888. Override the generator with
+The UDP listener uses port 8888 (`--port=N` overrides it; `--port=0` selects an
+ephemeral test port). Override the generator with
 `-Dzidl=/path/to/zidl` and the demo IDL with `-Dcounter-idl=/path/to/counter_types.idl`.
 The agent currently validates and logs XRCE samples; DDS forwarding is pending.
 
@@ -72,3 +76,13 @@ isolation, reconnect behavior, malformed-packet handling, and client limits.
 
 See [ROADMAP.md](ROADMAP.md) for current scope, interoperability goals and the
 planned path toward DDS bridging, reliable sessions and subscriptions.
+
+## Independent interoperability
+
+See [interop/README.md](interop/README.md) for the pinned eProsima peer test,
+local commands, CI workflow and exact scope of the verified subset.
+
+The default login encoding follows the published OMG 1.0 IDL. Use
+`--handshake=eprosima_v3` only for the pinned eProsima peer's extra login fields.
+See [the spec audit](interop/spec-audit.md) for normative fixes and compatibility
+differences; the implementation does not yet satisfy an OMG conformance profile.

@@ -31,6 +31,13 @@ pub const ReferenceCatalog = struct {
     entries: []const ReferenceDefinition,
 
     pub fn validateCreate(self: ReferenceCatalog, create: xrce.DecodedCreate) xrce.ResultStatus {
+        if (create.representation_format == .as_xml_string and create.object_kind == .publisher and create.reference.len == 0) {
+            // The empty-XML compatibility convention must still respect the catalog.
+            for (self.entries) |entry| {
+                if (entry.object_kind == .publisher and entry.matchesContext(create)) return .{ .status = .ok };
+            }
+            return .{ .status = .err_unknown_reference };
+        }
         if (create.representation_format != .by_reference) {
             return .{ .status = .err_invalid_data };
         }
@@ -144,7 +151,9 @@ pub const ResourceTable = struct {
         create: xrce.DecodedCreate,
         mode: CreateMode,
     ) xrce.ResultStatus {
-        if (create.representation_format != .by_reference) {
+        if (create.representation_format != .by_reference and
+            !(create.object_kind == .publisher and create.representation_format == .as_xml_string and create.reference.len == 0))
+        {
             return .{ .status = .err_invalid_data };
         }
 
@@ -253,4 +262,25 @@ fn optionalI16Eql(a: ?i16, b: ?i16) bool {
 fn optionalObjectIdEql(a: ?xrce.ObjectId, b: ?xrce.ObjectId) bool {
     if (a == null or b == null) return a == null and b == null;
     return std.mem.eql(u8, &a.?, &b.?);
+}
+
+test "empty XML publisher compatibility respects configured catalog context" {
+    var wire: [128]u8 = undefined;
+    const n = try (xrce.CreateByReference{
+        .session_id = 0x81,
+        .sequence_nr = 0,
+        .request_id = .{ 0, 1 },
+        .object_prefix = demo.publisher.object_prefix,
+        .object_kind = .publisher,
+        .representation_format = .as_xml_string,
+        .reference = "",
+        .related_object_id = demo.participant.object_id,
+    }).encodeMessage(&wire);
+    const create = try xrce.decodeCreateMessage(wire[0..n]);
+    try std.testing.expectEqual(xrce.StatusValue.ok, default_reference_catalog.validateCreate(create).status);
+    const empty = ReferenceCatalog{ .entries = &.{} };
+    try std.testing.expectEqual(xrce.StatusValue.err_unknown_reference, empty.validateCreate(create).status);
+    var other_parent = create;
+    other_parent.related_object_id = .{ 0x20, 0x11 };
+    try std.testing.expectEqual(xrce.StatusValue.err_unknown_reference, default_reference_catalog.validateCreate(other_parent).status);
 }
