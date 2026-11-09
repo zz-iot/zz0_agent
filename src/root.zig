@@ -5,6 +5,9 @@ const counter_types = @import("counter_types");
 
 pub const xrce = zz0_client.xrce;
 const demo = zz0_client.demo;
+pub const dds_demo = @import("dds_demo.zig");
+pub const dds_backend = @import("dds_backend.zig");
+pub const backend = @import("backend.zig");
 pub const resources = @import("resources.zig");
 pub const udp = @import("udp.zig");
 
@@ -44,7 +47,14 @@ pub const CounterStatusStats = struct {
     }
 };
 
+fn backendStatus(header: xrce.MessageHeader, request_id: xrce.RequestId, object_id: xrce.ObjectId, result: xrce.ResultStatus, output: []u8) !usize {
+    return (xrce.Status{ .session_id = header.session_id, .stream_id = header.stream_id, .sequence_nr = header.sequence_nr, .request = .{ .request_id = request_id, .object_id = object_id }, .result = result }).encodeMessage(output);
+}
+
 pub const Agent = struct {
+    /// Single-client injection until the UDP registry has a backend factory.
+    /// The caller owns this stable context through successful cleanup.
+    backend_client: ?*backend.Client = null,
     handshake_encoding: xrce.HandshakeEncoding = .omg_1_0,
     client_key: [4]u8 = @splat(0),
     vendor_id: [2]u8 = xrce.vendor_id_zenzen,
@@ -59,6 +69,11 @@ pub const Agent = struct {
     pub fn handleDatagram(self: *Agent, input: []const u8, output: []u8) !usize {
         const message = try xrce.decodeMessage(input);
         var iterator = message.submessages();
+        if (self.backend_client != null) {
+            var scan = message.submessages();
+            _ = try scan.next();
+            if (try scan.next() != null) return error.UnsupportedMultipleSubmessages;
+        }
 
         while (try iterator.next()) |submessage| {
             switch (submessage.header.id) {
@@ -73,6 +88,11 @@ pub const Agent = struct {
                 },
                 .create => {
                     const create = try xrce.decodeCreate(message.header, submessage);
+                    if (self.backend_client) |client| {
+                        if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                        const result = client.createWire(create);
+                        return backendStatus(message.header, create.request_id, create.request_object_id, result, output);
+                    }
                     const validation = self.reference_catalog.validateCreate(create);
                     const result = if (validation.status == .ok)
                         self.resource_table.createByReference(create, .{
@@ -94,6 +114,20 @@ pub const Agent = struct {
                 },
                 .write_data => {
                     const write = try xrce.decodeWriteData(message.header, submessage);
+                    if (self.backend_client) |client| {
+                        if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                        const result = client.write(write.object_id, write.serialized_data);
+                        if (result.status == .ok) {
+                            self.write_stats.record(write);
+                            const sample = if (client.telemetry(write.object_id) == .counter_status) self.decodeCounterStatusSample(write) catch |err| blk: {
+                                self.counter_status_stats.invalid += 1;
+                                self.observeInvalidCounterStatus(write, err);
+                                break :blk null;
+                            } else null;
+                            self.observeWrite(write, sample);
+                        }
+                        return backendStatus(message.header, write.request_id, write.object_id, result, output);
+                    }
                     const resource = self.resource_table.lookup(write.object_id) orelse {
                         return try (xrce.Status{
                             .session_id = message.header.session_id,
@@ -131,6 +165,24 @@ pub const Agent = struct {
                         .result = result,
                     }).encodeMessage(output);
                 },
+                .delete => {
+                    if (self.backend_client) |client| {
+                        const request = try xrce.decodeDelete(message.header, submessage);
+                        if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                        const result = if (std.mem.eql(u8, &request.object_id, &[_]u8{ 0xff, 0xfe })) blk: {
+                            client.clear() catch |err| break :blk xrce.ResultStatus{ .status = backend.statusFor(err) };
+                            break :blk xrce.ResultStatus{ .status = .ok };
+                        } else client.delete(request.object_id);
+                        return backendStatus(message.header, request.request_id, request.object_id, result, output);
+                    }
+                },
+                .reset => {
+                    if (self.backend_client) |client| {
+                        _ = try xrce.decodeReset(message.header, submessage);
+                        try client.clear();
+                        return 0;
+                    }
+                },
                 else => {},
             }
         }
@@ -144,6 +196,10 @@ pub const Agent = struct {
     ) !?counter_types.CounterStatus {
         if (!std.mem.eql(u8, &write.object_id, &demo.datawriter.object_id)) return null;
 
+        return self.decodeCounterStatusSample(write);
+    }
+
+    fn decodeCounterStatusSample(self: *Agent, write: xrce.DecodedWriteData) !?counter_types.CounterStatus {
         // XRCE DATA carries plain CDR, without a DDS encapsulation header.
         // Adapt to zidl's reader locally; do not guess from sample bytes.
         var framed: [516]u8 = undefined;
@@ -722,4 +778,12 @@ test "CREATE prefix derives resource identity while STATUS preserves correlation
     try std.testing.expectEqual(xrce.StatusValue.ok, status.result.status);
     try std.testing.expectEqualSlices(u8, request[10..12], &status.related_request.object_id);
     try std.testing.expect(agent.resource_table.lookup(demo_entity.object_id) != null);
+}
+
+test {
+    _ = @import("backend_test.zig");
+}
+
+test {
+    _ = @import("dds_backend_test.zig");
 }

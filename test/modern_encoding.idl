@@ -1,0 +1,7 @@
+// Deliberately outside the constrained Pico profile: exercise modern delimiters.
+@appendable
+struct DelimitedProbe { unsigned long value; };
+@final
+struct NestedProbe { unsigned long tag; DelimitedProbe nested; unsigned long long serial; };
+@mutable
+struct MutableProbe { @id(0) unsigned long value; };

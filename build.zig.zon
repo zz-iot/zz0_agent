@@ -7,16 +7,18 @@
         .zz0_client = .{
             .path = "../zz0_client",
         },
-        .zidl = .{
-            .url = "https://github.com/zz-iot/zidl/archive/refs/tags/v0.3.21-zig.0.17.0.tar.gz",
-            .hash = "zidl-0.3.21-zig.0.17.0-H6NwLifoLwApXo4JO2G9PTgiMqExxddtA-79SISqto93",
+        .zzdds = .{
+            .url = "https://github.com/zz-iot/zzdds/archive/refs/tags/v0.3.11-zig.0.17.0.tar.gz",
+            .hash = "zzdds-0.3.11-zig.0.17.0-sc7dmpqeUACXxN5BicLZDuCxAc8X8I0RH0VAvEyP66kV",
         },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "test",
         "interop",
+        "docs",
         "README.md",
     },
 }

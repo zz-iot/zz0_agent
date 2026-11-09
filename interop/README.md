@@ -27,13 +27,14 @@ agent on port 8888 alone. Tests require real localhost UDP sockets. All child
 processes have deadlines and are stopped on success or failure.
 
 CI pins the companion zz0_client checkout to commit
-`90f56a2f1f62263ae85731f485cf9cd4cc0ca448` (interoperability corrections).
+`9ffef195bcac18d4695ef5f7a9c58a5bf9beab85` (PR #2: binary CREATE and lifecycle codecs).
 Manual dispatch accepts `client_ref` to test another branch, tag or commit;
 leaving it empty uses the pin. The demo checkout supplies only the existing
 CounterStatus IDL to the agent build; firmware is not needed for the interop test.
 
-This tests local acceptance, not DDS delivery: zz0_agent has no DDS bridge yet.
-The runner explicitly selects `--handshake=eprosima_v3`. The test uses individual
+This tests local acceptance, not DDS delivery. The runner explicitly selects
+`--validate-only --handshake=eprosima_v3`; the normal agent forwards through DDS
+and expects standard binary publisher/writer CREATEs. The test uses individual
 requests over a best-effort stream, no properties,
 keyless session headers, little-endian CDR and bounded, unfragmented packets.
 It does not establish reliable-stream, multi-operation-datagram, deletion,
@@ -57,3 +58,10 @@ the updated agent.
 See [spec-audit.md](spec-audit.md). Normal operation defaults to
 `--handshake=omg_1_0`; only the explicitly selected eProsima mode adds MTU/result
 fields. The published OMG STATUS_AGENT IDL has no result field.
+
+The Pico firmware uses a separate standard CREATE helper: participant/topic
+references, then modern XTypes 1.3 binary publisher/writer records. This pinned
+eProsima compatibility fixture deliberately retains its vendor CREATE forms.
+Its binary writer API instead takes a topic object ID and includes QoS; it is
+not a drop-in replacement for our topic-name binary subset. These fixtures do
+not require the firmware or real DDS backend to accept the vendor extensions.

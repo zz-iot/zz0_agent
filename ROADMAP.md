@@ -4,19 +4,30 @@ The agent currently implements a small DDS-XRCE subset for the Pico demo.
 This roadmap describes intended development order, not release commitments or
 an assertion of XRCE conformance.
 
+The next implementation is scoped in the
+[DDS backend plan](docs/dds-backend-plan.md). Shared resource construction,
+authoring and multi-provider bindings are now available in zzdds (through PR
+#113). The agent now pins zzdds 0.3.11 for incremental construction, explicit
+endpoint wire representation and handle retirement. Client cleanup is part of
+the real backend.
+
 ## Current state
 
 - UDP session registration for up to eight clients, with independent resources
   and statistics.
-- Entity creation by reference against a configured catalog.
+- Participant/topic references and binary publisher/writer creation against a configured catalog.
 - WRITE_DATA validation, STATUS replies and generated CounterStatus decoding.
 - Tests for malformed packets, client isolation, registration/rebinding,
   resource validation and capacity limits.
-- Hardware validation with Pico WH and Pico 2 WH, including simultaneous
-  publishing, agent restarts and WiFi disconnect/reconnect recovery.
+- Operator-reported DDS consumer receipt for Pico WH and Pico 2 WH together,
+  including recovery after agent restart, Pico WH reset with Pico 2 WH left
+  running, and access-point loss/restoration (2026-11-04). Each board-filtered
+  consumer received 10 samples per scenario; see the backend evidence record.
 
-The agent does not yet create DDS entities or forward samples to zzdds.
-An OK write status currently means local acceptance, not DDS delivery.
+Normal operation now creates DDS entities and forwards checked samples;
+[scope and local evidence](docs/real-dds-backend.md). Its OK status means DDS
+backend acceptance, not subscriber receipt. The explicit `--validate-only` compatibility fixture
+reports local acceptance without DDS forwarding.
 The client registry has no idle expiry or authentication. This is a demo
 implementation, not a general-purpose or fully conformant XRCE agent.
 
@@ -40,6 +51,12 @@ Exit criterion: a documented subset works with an independent implementation,
 with automated regressions for discrepancies found.
 
 ## 2. Bridge a known type into zzdds
+
+The [initial backend adapter](docs/backend-adapter.md) now provides normalized
+request handling, per-client associations and retryable cleanup with fake-backend
+tests. Managed UDP ownership and real DDS forwarding are implemented locally;
+see the [real backend checkpoint](docs/real-dds-backend.md). The existing demo path is
+unchanged.
 
 - Separate XRCE request handling from DDS backend operations and demo telemetry.
 - Map configured references to actual zzdds participants, topics, publishers
@@ -72,10 +89,11 @@ Application retries alone must not be presented as XRCE reliable-stream support.
 
 ## Later, driven by applications
 
-Loadable generated typesupport bundles (type names, serialization/key-hash hooks
-and versioned registration entrypoints) could later let the agent support new
-application IDL without rebuilding. They are not a prerequisite for the known-type
-bridge.
+Loadable generated typesupport libraries and a checked multi-provider binding
+contract now exist in zidl/zzdds. The backend plan reuses them so the agent can
+support configured application types without rebuilding. It does not add another
+library format or require general DynamicData. Live provider replacement and
+resource graph reload remain later work.
 
 Broader entity representations, fragmentation, additional transports and richer
 QoS support can expand the supported profile. Runtime type registration,
