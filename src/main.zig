@@ -1,5 +1,7 @@
 const std = @import("std");
+pub const std_options: std.Options = .{ .log_level = .warn };
 const zz0_agent = @import("zz0_agent");
+const dds = @import("zzdds");
 
 pub fn main(init: std.process.Init) !void {
     const config = try parseArgs(init.minimal.args, std.heap.page_allocator);
@@ -9,19 +11,31 @@ pub fn main(init: std.process.Init) !void {
     const io = threaded.io();
 
     const bind_address = std.Io.net.IpAddress{ .ip4 = .unspecified(config.port) };
-    var server = try zz0_agent.udp.UdpServer.bind(io, bind_address, .{
-        .handshake_encoding = config.handshake_encoding,
-        .write_log_mode = config.write_log_mode,
-        .stats_every = config.stats_every,
-        .hex_bytes = config.hex_bytes,
-    });
-    defer server.close(io);
+    var prepared: ?dds.resources.providers.Prepared = null;
+    defer if (prepared) |*p| p.deinit();
+    var factory: ?dds.factory.DomainParticipantFactory = null;
+    defer if (factory) |*f| f.deinit();
+    var runtime: ?zz0_agent.dds_backend.Runtime = null;
+    defer if (runtime) |*r| r.deinit() catch @panic("live DDS clients");
+    if (!config.validate_only) {
+        prepared = try zz0_agent.dds_demo.prepare(init.gpa, 0);
+        factory = try dds.createFactory();
+        runtime = try zz0_agent.dds_backend.Runtime.init(init.gpa, &prepared.?, zz0_agent.dds_demo.catalog, factory.?.toDDSFactory());
+    }
+    const template: zz0_agent.Agent = .{ .handshake_encoding = config.handshake_encoding, .write_log_mode = config.write_log_mode, .stats_every = config.stats_every, .hex_bytes = config.hex_bytes };
+    var server = if (runtime) |*r| try zz0_agent.udp.UdpServer.bindBackend(io, bind_address, template, r.clientFactory()) else try zz0_agent.udp.UdpServer.bind(io, bind_address, template);
+    defer server.close(io) catch @panic("server cleanup");
 
+    std.debug.print("zz0_agent: {s}\n", .{if (config.validate_only) "validation-only compatibility mode; samples are not forwarded" else "DDS forwarding enabled (built-in CounterStatus configuration)"});
     std.debug.print("zz0_agent: listening for DDS-XRCE UDP on port {d}\n", .{server.localAddress().getPort()});
-    try server.serveForever(io);
+    if (config.max_datagrams) |count| {
+        for (0..count) |_| try server.serveOnce(io, .none);
+    } else try server.serveForever(io);
 }
 
 const Config = struct {
+    validate_only: bool = false,
+    max_datagrams: ?usize = null,
     handshake_encoding: zz0_agent.xrce.HandshakeEncoding = .omg_1_0,
     port: u16 = 8888,
     write_log_mode: zz0_agent.WriteLogMode = .none,
@@ -38,6 +52,11 @@ fn parseArgs(args: std.process.Args, allocator: std.mem.Allocator) !Config {
         if (std.mem.eql(u8, arg, "--help")) {
             printUsage();
             std.process.exit(0);
+        } else if (std.mem.startsWith(u8, arg, "--max-datagrams=")) {
+            config.max_datagrams = try std.fmt.parseUnsigned(usize, arg[16..], 10);
+            if (config.max_datagrams.? == 0) return error.InvalidDatagramLimit;
+        } else if (std.mem.eql(u8, arg, "--validate-only")) {
+            config.validate_only = true;
         } else if (std.mem.startsWith(u8, arg, "--handshake=")) {
             config.handshake_encoding = std.meta.stringToEnum(zz0_agent.xrce.HandshakeEncoding, arg["--handshake=".len..]) orelse return error.InvalidHandshakeEncoding;
         } else if (std.mem.startsWith(u8, arg, "--port=")) {
@@ -66,7 +85,9 @@ fn parseArgs(args: std.process.Args, allocator: std.mem.Allocator) !Config {
 
 fn printUsage() void {
     std.debug.print(
-        \\usage: zz0_agent [--handshake=omg_1_0|eprosima_v3] [--port=N] [--write-log=none|summary|hex] [--stats-every=N] [--hex-bytes=N]
+        \\usage: zz0_agent [--handshake=omg_1_0|eprosima_v3] [--port=N] [--validate-only] [--max-datagrams=N] [--write-log=none|summary|hex] [--stats-every=N] [--hex-bytes=N]
+        \\  By default, forward through DDS using the built-in CounterStatus configuration.
+        \\  --validate-only selects the legacy compatibility test fixture; no DDS forwarding.
         \\
     , .{});
 }

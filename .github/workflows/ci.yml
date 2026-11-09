@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: zz-iot/zz0_client
-          ref: ${{ inputs.client_ref || '90f56a2f1f62263ae85731f485cf9cd4cc0ca448' }}
+          ref: ${{ inputs.client_ref || '9ffef195bcac18d4695ef5f7a9c58a5bf9beab85' }}
           path: zz0_client
       - uses: actions/checkout@v4
         with:
@@ -43,6 +43,7 @@ jobs:
           zig fmt --check build.zig src
           zig build test
           zig build test -Doptimize=ReleaseSafe
+          zig build test -Dsanitize-thread=true
           zig build -Doptimize=ReleaseSafe
       - uses: actions/cache@v4
         with:

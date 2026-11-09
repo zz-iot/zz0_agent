@@ -19,11 +19,13 @@ def main():
                     f"-I{args.prefix / 'include'}", str(Path(__file__).with_name("peer.c")),
                     str(args.prefix / "lib/libmicroxrcedds_client.a"),
                     str(args.prefix / "lib/libmicrocdr.a"), "-o", str(peer)], check=True)
-    server = Process([args.agent.resolve(), "--port=0", "--handshake=eprosima_v3", "--write-log=summary"],
+    server = Process([args.agent.resolve(), "--validate-only", "--port=0", "--handshake=eprosima_v3", "--write-log=summary"],
                      args.logs / "agent.log", ready="listening for DDS-XRCE UDP on port")
     client = None
     try:
         server.wait_ready()
+        if "validation-only compatibility mode; samples are not forwarded" not in "".join(server.lines):
+            raise RuntimeError("compatibility runner did not select validation-only mode")
         port = re.search(r"port (\d+)", "".join(server.lines)).group(1)
         client = Process([peer, port], args.logs / "peer.log")
         client.finish()
