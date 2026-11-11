@@ -1,0 +1,19 @@
+schema_version = 1
+name = "CounterStatus"
+
+[profiles.XRCE.writer_qos]
+data_representation = "XCDR2"
+max_samples = 256
+max_instances = 256
+max_samples_per_instance = 256
+
+[participants.main]
+domain_id = 0
+types = { CounterStatus = {} }
+topics = { counter = { topic_name = "CounterStatusTopic", type_ref = "CounterStatus" } }
+publishers = { pub = {} }
+
+[participants.main.writers.counter]
+container_ref = "pub"
+topic_ref = "counter"
+profile_ref = "XRCE"

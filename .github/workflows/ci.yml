@@ -17,6 +17,56 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zz0_agent
+      - uses: actions/checkout@v4
+        with:
+          repository: zz-iot/zz0_client
+          ref: ${{ inputs.client_ref || '9ffef195bcac18d4695ef5f7a9c58a5bf9beab85' }}
+          path: zz0_client
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+      - name: Core tests without a Pico checkout
+        working-directory: zz0_agent
+        run: |
+          zig fmt --check build.zig src test
+          zig build test
+          zig build test -Doptimize=ReleaseSafe
+          zig build test -Dsanitize-thread=true
+          zig build
+          python3 interop/startup.py --agent zig-out/bin/zz0_agent --config examples/counter/agent.toml --offline-only
+  multi-library:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zz0_agent
+      - uses: actions/checkout@v4
+        with:
+          repository: zz-iot/zz0_client
+          ref: ${{ inputs.client_ref || '9ffef195bcac18d4695ef5f7a9c58a5bf9beab85' }}
+          path: zz0_client
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+      - name: Independent project libraries and DDS receipt
+        working-directory: zz0_agent
+        run: |
+          zig build test-multi-library -Dmulti-library-logs="$RUNNER_TEMP/multi/debug"
+          zig build test-multi-library -Doptimize=ReleaseSafe -Dmulti-library-logs="$RUNNER_TEMP/multi/safe"
+          zig build test-multi-library -Dsanitize-thread=true -Dmulti-library-logs="$RUNNER_TEMP/multi/tsan"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-library-logs
+          path: ${{ runner.temp }}/multi
   test-and-independent-interop:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -37,13 +87,13 @@ jobs:
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: '0.17.0'
-      - name: Format and unit tests
+      - name: CounterStatus and compatibility fixtures
         working-directory: zz0_agent
         run: |
-          zig fmt --check build.zig src
-          zig build test
-          zig build test -Doptimize=ReleaseSafe
-          zig build test -Dsanitize-thread=true
+          zig build test-fixtures test-startup
+          zig build test-fixtures test-startup -Doptimize=ReleaseSafe
+          zig build test-fixtures test-startup -Dsanitize-thread=true
+          zig build fixtures -Doptimize=ReleaseSafe
           zig build -Doptimize=ReleaseSafe
       - uses: actions/cache@v4
         with:
@@ -54,7 +104,7 @@ jobs:
         run: python3 interop/build_peers.py --work "$RUNNER_TEMP/xrce-peers"
       - name: Verify independent requests and sample acceptance
         working-directory: zz0_agent
-        run: python3 interop/run.py --agent zig-out/bin/zz0_agent --prefix "$RUNNER_TEMP/xrce-peers/install" --logs "$RUNNER_TEMP/interop-logs"
+        run: python3 interop/run.py --agent zig-out/bin/zz0_agent_compat --prefix "$RUNNER_TEMP/xrce-peers/install" --logs "$RUNNER_TEMP/interop-logs"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

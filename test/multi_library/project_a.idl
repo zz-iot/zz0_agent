@@ -1,0 +1,7 @@
+module Common {
+    @final struct Reading { @key unsigned long id; long value; };
+    @final struct Unused { unsigned long flags; };
+};
+module ProjectA {
+    @final struct Temperature { @key unsigned long id; double celsius; };
+};

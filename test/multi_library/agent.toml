@@ -1,0 +1,58 @@
+schema_version = 1
+resources = "resources.toml"
+
+[[bindings]]
+participant = "main"
+type_name = "ProjectA::Temperature"
+provider = "project_a"
+[[bindings]]
+participant = "main"
+type_name = "ProjectB::Pressure"
+provider = "project_b"
+[[bindings]]
+participant = "main"
+type_name = "Common::Reading"
+provider = "project_b"
+
+[catalog."Multi::Participant"]
+kind = "participant"
+participant = "main"
+resource = "main"
+[catalog."Multi::TemperatureTopic"]
+kind = "topic"
+participant = "main"
+resource = "temperature"
+parent = "Multi::Participant"
+[catalog."Multi::PressureTopic"]
+kind = "topic"
+participant = "main"
+resource = "pressure"
+parent = "Multi::Participant"
+[catalog."Multi::ReadingTopic"]
+kind = "topic"
+participant = "main"
+resource = "common"
+parent = "Multi::Participant"
+[catalog."Multi::Publisher"]
+kind = "publisher"
+participant = "main"
+resource = "pub"
+parent = "Multi::Participant"
+[catalog."Multi::TemperatureWriter"]
+kind = "datawriter"
+participant = "main"
+resource = "temperature"
+parent = "Multi::Publisher"
+topic = "Multi::TemperatureTopic"
+[catalog."Multi::PressureWriter"]
+kind = "datawriter"
+participant = "main"
+resource = "pressure"
+parent = "Multi::Publisher"
+topic = "Multi::PressureTopic"
+[catalog."Multi::ReadingWriter"]
+kind = "datawriter"
+participant = "main"
+resource = "common"
+parent = "Multi::Publisher"
+topic = "Multi::ReadingTopic"

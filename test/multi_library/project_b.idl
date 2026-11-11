@@ -1,0 +1,8 @@
+module Common {
+    @final struct Reading { @key unsigned long id; long value; };
+    // Deliberately conflicts with A; neither project selects this export.
+    @final struct Unused { unsigned long long flags; };
+};
+module ProjectB {
+    @final struct Pressure { @key unsigned long id; long value; string<12> label; };
+};

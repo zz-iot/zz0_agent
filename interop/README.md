@@ -1,6 +1,6 @@
 # Independent XRCE interoperability
 
-This host-only test drives `zz0_agent` with eProsima Micro XRCE-DDS Client v3.0.1.
+This host-only test drives `zz0_agent_compat` with eProsima Micro XRCE-DDS Client v3.0.1.
 All request framing and sample CDR come from the upstream C SDK and Micro-CDR.
 
 It checks session login; by-reference participant, topic and writer creation;
@@ -14,8 +14,8 @@ a C compiler, run from this repository on Linux:
 
 ```sh
 python3 interop/build_peers.py --work /tmp/zz0-agent-peers
-zig build -Doptimize=ReleaseSafe
-python3 interop/run.py --agent zig-out/bin/zz0_agent \
+zig build fixtures -Doptimize=ReleaseSafe
+python3 interop/run.py --agent zig-out/bin/zz0_agent_compat \
   --prefix /tmp/zz0-agent-peers/install --logs /tmp/zz0-agent-interop
 ```
 
@@ -32,8 +32,8 @@ Manual dispatch accepts `client_ref` to test another branch, tag or commit;
 leaving it empty uses the pin. The demo checkout supplies only the existing
 CounterStatus IDL to the agent build; firmware is not needed for the interop test.
 
-This tests local acceptance, not DDS delivery. The runner explicitly selects
-`--validate-only --handshake=eprosima_v3`; the normal agent forwards through DDS
+This tests local acceptance, not DDS delivery. The runner explicitly selects the compatibility executable with
+`--validate-only --handshake=eprosima_v3`; the configured normal agent forwards through DDS
 and expects standard binary publisher/writer CREATEs. The test uses individual
 requests over a best-effort stream, no properties,
 keyless session headers, little-endian CDR and bounded, unfragmented packets.
@@ -65,3 +65,56 @@ eProsima compatibility fixture deliberately retains its vendor CREATE forms.
 Its binary writer API instead takes a topic object ID and includes QoS; it is
 not a drop-in replacement for our topic-name binary subset. These fixtures do
 not require the firmware or real DDS backend to accept the vendor extensions.
+
+## Configured startup checks
+
+`zig build test-startup` builds the normal agent and an explicit generated provider,
+then runs `startup.py` against offline validation, loaded inspection, file/identity
+constraints, relative path bases and failed UDP bind rollback. Its offline-only
+mode runs without a Pico checkout or a provider artifact:
+
+```sh
+zig build
+python3 interop/startup.py --agent zig-out/bin/zz0_agent \
+  --config examples/counter/agent.toml --offline-only
+```
+
+The [DDS forwarding smoke test](../docs/real-dds-backend.md#evidence) uses the normal
+executable with an explicit configuration and library. The independent eProsima
+fixture above remains a validation-only protocol test.
+
+## Multiple project libraries
+
+```sh
+zig build test-multi-library
+# Also run in CI:
+zig build test-multi-library -Doptimize=ReleaseSafe
+zig build test-multi-library -Dsanitize-thread=true
+```
+
+This lane generates three separate libraries from agent-owned fixture IDL, using
+the published zzdds/zidl dependency graph; it needs no Pico checkout. Normal builds
+and core tests do not generate these providers. Logs default to
+`.zig-cache/multi-library-logs`; override with `-Dmulti-library-logs=PATH`.
+
+Project A and B supply distinct selected types, equivalent `Common::Reading`
+exports and conflicting `Common::Unused` exports. A third library supplies a
+conflicting `Common::Reading`. Checks establish that explicit selections survive
+reversed load order; equivalent exports have equal Minimal TypeIdentifiers;
+a constrained conflicting selection, duplicate binding and missing export fail
+before readiness. Unselected conflicts do not cause global type registration.
+An explicitly chosen different definition without an identity constraint is valid;
+there is no automatic winner, assignability check or implicit replacement.
+
+Two XRCE clients then reuse the same object IDs through one configured normal
+agent. A separate DDS consumer process verifies all three selected types from both
+clients, initially and after RESET/reconnect. The test checks malformed/trailing
+samples, resource names that have no public XRCE reference, repeated REUSE/login,
+client deletion and normal shutdown with another client's graph still live.
+The consumer loads the same provider selections, creates only its own readers and
+decodes sample fields through the CDR reader without linked generated sample types.
+These are Linux tests using our DDS implementation in both processes, rather than
+independent-vendor DDS interoperability or physical-board evidence.
+
+See [the Pico acceptance commands](../docs/pico-acceptance.md) for the remaining
+hardware pass against configured startup.

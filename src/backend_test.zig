@@ -2,83 +2,16 @@ const std = @import("std");
 const B = @import("backend.zig");
 const xrce = @import("zz0_client").xrce;
 const testing = std.testing;
-const definitions = [_]B.Definition{
-    .{ .name = "participant", .kind = .participant, .participant = "main", .resource = "main", .domain = 42 },
-    .{ .name = "topic", .kind = .topic, .participant = "main", .resource = "reading", .parent = "participant", .topic_name = "Reading" },
-    .{ .name = "publisher", .kind = .publisher, .participant = "main", .resource = "pub", .parent = "participant" },
-    .{ .name = "writer", .kind = .datawriter, .participant = "main", .resource = "reading", .parent = "publisher", .topic = "topic", .telemetry = .counter_status },
-};
-const catalog: B.Catalog = .{ .definitions = &definitions };
-const participant: xrce.ObjectId = .{ 0, 0x11 };
-const topic: xrce.ObjectId = .{ 0, 0x12 };
-const publisher: xrce.ObjectId = .{ 0, 0x13 };
-const writer: xrce.ObjectId = .{ 0, 0x15 };
-const Fake = struct {
-    next: usize = 0,
-    live: [64]bool = @splat(false),
-    create_calls: usize = 0,
-    write_calls: usize = 0,
-    fail_create: bool = false,
-    fail_delete: bool = false,
-    fail_clear: bool = false,
-    dirty: bool = false,
-    sample: [516]u8 = undefined,
-    sample_len: usize = 0,
-    reentrant: ?*B.Client = null,
-    fn cast(ctx: *anyopaque) *@This() {
-        return @ptrCast(@alignCast(ctx));
-    }
-    fn create(ctx: *anyopaque, _: *const B.Definition, parent: ?B.Handle, topic_: ?B.Handle) !B.Handle {
-        const self = cast(ctx);
-        self.create_calls += 1;
-        if (self.reentrant) |owner| try testing.expectError(error.OperationInProgress, owner.clear());
-        if (self.fail_create) return error.OutOfMemory;
-        if (parent) |p| try testing.expect(self.live[p.slot]);
-        if (topic_) |t| try testing.expect(self.live[t.slot]);
-        const slot = self.next;
-        self.next += 1;
-        self.live[slot] = true;
-        return .{ .slot = slot, .generation = 1 };
-    }
-    fn write(ctx: *anyopaque, handle: B.Handle, data: []const u8) !void {
-        const self = cast(ctx);
-        try testing.expect(self.live[handle.slot]);
-        self.write_calls += 1;
-        if (data.len != 8) return error.InvalidSample;
-        self.sample_len = data.len;
-        @memcpy(self.sample[0..data.len], data);
-    }
-    fn delete(ctx: *anyopaque, handle: B.Handle) !void {
-        const self = cast(ctx);
-        if (self.fail_delete) return error.CleanupFailed;
-        try testing.expect(self.live[handle.slot]);
-        self.live[handle.slot] = false;
-    }
-    fn clear(ctx: *anyopaque) !void {
-        const self = cast(ctx);
-        // Simulate partial backend cleanup before failure.
-        self.live[0] = false;
-        if (self.fail_clear) return error.CleanupFailed;
-        self.live = @splat(false);
-        self.dirty = false;
-    }
-    fn dirtyState(ctx: *anyopaque) bool {
-        return cast(ctx).dirty;
-    }
-    const vtable: B.Backend.Vtable = .{ .create = create, .write = write, .delete = delete, .clear = clear, .needs_cleanup = dirtyState };
-    fn backend(self: *@This()) B.Backend {
-        return .{ .context = self, .vtable = &vtable };
-    }
-};
-fn expect(status: xrce.StatusValue, result: xrce.ResultStatus) !void {
-    try testing.expectEqual(status, result.status);
-}
-fn populate(client: *B.Client) !void {
-    try expect(.ok, client.create(.{ .object_id = participant, .definition = "participant", .domain = 42 }));
-    try expect(.ok, client.create(.{ .object_id = topic, .definition = "topic", .parent = participant }));
-    try expect(.ok, client.create(.{ .object_id = publisher, .definition = "publisher", .parent = participant }));
-    try expect(.ok, client.create(.{ .object_id = writer, .definition = "writer", .parent = publisher, .topic = topic }));
-}
+const support = @import("test_support.zig");
+const definitions = support.definitions;
+const catalog = support.catalog;
+const participant = support.participant;
+const topic = support.topic;
+const publisher = support.publisher;
+const writer = support.writer;
+const Fake = support.Fake;
+const expect = support.expect;
+const populate = support.populate;
 test "backend catalog validates kind and parent definitions without fixed object IDs" {
     try catalog.validate();
     var bad = definitions;
@@ -91,7 +24,7 @@ test "backend catalog validates kind and parent definitions without fixed object
     bad[0].domain = null;
     try testing.expectError(error.InvalidDefinition, (B.Catalog{ .definitions = &bad }).validate());
 }
-test "backend clients isolate overlapping IDs and gate telemetry on configured definitions" {
+test "backend clients isolate overlapping IDs and resolve configured definitions" {
     var fa: Fake = .{};
     var fb: Fake = .{};
     var a = try B.Client.init(catalog, fa.backend());
@@ -104,7 +37,7 @@ test "backend clients isolate overlapping IDs and gate telemetry on configured d
     try expect(.ok, a.write(writer, &.{ 1, 2, 3, 4 }));
     try testing.expectEqualSlices(u8, &.{ 0, 7, 0, 0, 1, 2, 3, 4 }, fa.sample[0..fa.sample_len]);
     try testing.expectEqual(@as(usize, 0), fb.write_calls);
-    try testing.expectEqual(B.Telemetry.counter_status, a.telemetry(writer).?);
+    try testing.expectEqualStrings("writer", a.definitionFor(writer).?.name);
     try a.clear();
     try testing.expectEqual(@as(usize, 0), a.count());
     try testing.expectEqual(@as(usize, 4), b.count());
@@ -241,27 +174,6 @@ test "packet backend CREATE reserves reply capacity and preserves request correl
     try expect(.err_invalid_data, (try xrce.decodeStatusMessage(response[0..pm])).result);
     try testing.expectEqual(@as(usize, 2), fake.create_calls);
 }
-test "packet backend write acceptance survives optional telemetry failure and bounds reply space" {
-    const Agent = @import("root.zig").Agent;
-    var fake: Fake = .{};
-    var client = try B.Client.init(catalog, fake.backend());
-    defer client.clear() catch @panic("cleanup");
-    try populate(&client);
-    var agent: Agent = .{ .backend_client = &client };
-    var request: [64]u8 = undefined;
-    var response: [64]u8 = undefined;
-    const n = try (xrce.WriteData{ .session_id = 0x81, .sequence_nr = 3, .request_id = .{ 0xaa, 5 }, .object_id = writer, .serialized_data = &.{ 1, 2, 3, 4 } }).encodeMessage(&request);
-    try testing.expectError(error.BufferTooSmall, agent.handleDatagram(request[0..n], response[0..1]));
-    try testing.expectEqual(@as(usize, 0), fake.write_calls);
-    const m = try agent.handleDatagram(request[0..n], &response);
-    const status = try xrce.decodeStatusMessage(response[0..m]);
-    try expect(.ok, status.result);
-    try testing.expectEqual(@as(u64, 1), client.stats.accepted);
-    try testing.expectEqual(@as(u64, 1), agent.write_stats.total_writes);
-    try testing.expectEqual(@as(u64, 1), agent.counter_status_stats.invalid);
-    try testing.expectEqualSlices(u8, &.{ 0xaa, 5 }, &status.related_request.request_id);
-    try testing.expectEqualSlices(u8, &writer, &status.related_request.object_id);
-}
 test "packet DELETE and RESET retain cleanup obligations and reject multiple operations" {
     const Agent = @import("root.zig").Agent;
     var fake: Fake = .{};
@@ -325,60 +237,6 @@ test "packet binary CREATE resolves publisher and writer without legacy referenc
     try testing.expectEqual(@as(usize, 4), client.count());
 }
 
-test "generated appendable nested and mutable fixtures use XTypes 1.3 headers" {
-    const rt = @import("zidl_rt");
-    const F = @import("encoding_fixture");
-    var bytes: std.ArrayList(u8) = .empty;
-    defer bytes.deinit(testing.allocator);
-    var w = rt.CdrWriter(.xcdr2).init(&bytes, testing.allocator);
-    try w.writeEncapHeaderDelimited();
-    try F.DelimitedProbe.serialize(&w, .{ .value = 42 });
-    try testing.expectEqualSlices(u8, &.{ 0, 9, 0, 0, 4, 0, 0, 0, 42, 0, 0, 0 }, bytes.items);
-    bytes.clearRetainingCapacity();
-    w = rt.CdrWriter(.xcdr2).init(&bytes, testing.allocator);
-    try w.writeEncapHeader();
-    try F.NestedProbe.serialize(&w, .{ .tag = 1, .nested = .{ .value = 42 }, .serial = 0x0102030405060708 });
-    try testing.expectEqualSlices(u8, &.{ 0, 7, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 42, 0, 0, 0, 8, 7, 6, 5, 4, 3, 2, 1 }, bytes.items);
-    bytes.clearRetainingCapacity();
-    w = rt.CdrWriter(.xcdr2).init(&bytes, testing.allocator);
-    try w.writeEncapHeaderMutable();
-    try F.MutableProbe.serialize(&w, .{ .value = 42 });
-    try testing.expectEqualSlices(u8, &.{ 0, 11, 0, 0, 8, 0, 0, 0, 0, 0, 0, 32, 42, 0, 0, 0 }, bytes.items);
-}
-
-test "appendable wire sample reaches generated decoder through the packet adapter" {
-    const Agent = @import("root.zig").Agent;
-    const Decode = struct {
-        fn write(ctx: *anyopaque, handle: B.Handle, bytes: []const u8) !void {
-            const self: *Fake = @ptrCast(@alignCast(ctx));
-            try testing.expect(self.live[handle.slot]);
-            var reader = try @import("zidl_rt").CdrReader.init(bytes);
-            var sample: @import("encoding_fixture").DelimitedProbe = undefined;
-            try @import("encoding_fixture").DelimitedProbe.deserializeInto(&sample, &reader, testing.allocator);
-            try testing.expectEqual(@as(u32, 42), sample.value);
-            try testing.expectEqual(bytes.len, reader.pos);
-            try testing.expectEqualSlices(u8, &.{ 0, 9, 0, 0, 4, 0, 0, 0, 42, 0, 0, 0 }, bytes);
-            self.write_calls += 1;
-        }
-    };
-    var fake: Fake = .{};
-    var vtable = Fake.vtable;
-    vtable.write = Decode.write;
-    var defs = definitions;
-    defs[3].encoding = .delimited_cdr2_le;
-    defs[3].telemetry = .none;
-    var client = try B.Client.init(.{ .definitions = &defs }, .{ .context = &fake, .vtable = &vtable });
-    defer client.clear() catch @panic("cleanup");
-    try populate(&client);
-    var agent: Agent = .{ .backend_client = &client };
-    var request: [128]u8 = undefined;
-    var response: [64]u8 = undefined;
-    const n = try (xrce.WriteData{ .session_id = 0x81, .sequence_nr = 0, .request_id = .{ 0, 1 }, .object_id = writer, .serialized_data = &.{ 4, 0, 0, 0, 42, 0, 0, 0 } }).encodeMessage(&request);
-    const m = try agent.handleDatagram(request[0..n], &response);
-    try expect(.ok, (try xrce.decodeStatusMessage(response[0..m])).result);
-    try testing.expectEqual(@as(usize, 1), fake.write_calls);
-}
-
 test "binary CREATE rejects ambiguous configured publishers and writers" {
     var defs: [6]B.Definition = undefined;
     @memcpy(defs[0..4], &definitions);
@@ -393,8 +251,12 @@ test "binary CREATE rejects ambiguous configured publishers and writers" {
     const p = try (xrce.CreateBinary{ .session_id = 0x81, .sequence_nr = 0, .request_id = .{ 0, 1 }, .object_prefix = .{ 0, 0x10 }, .parent = participant, .definition = .{ .publisher = null } }).encodeMessage(&wire);
     try expect(.err_denied, client.createWire(try xrce.decodeCreateMessage(wire[0..p])));
     try testing.expectEqual(@as(usize, 2), fake.create_calls);
-    try expect(.ok, client.create(.{ .object_id = publisher, .definition = "publisher", .parent = participant }));
+    const named = try (xrce.CreateBinary{ .session_id = 0x81, .sequence_nr = 0, .request_id = .{ 0, 2 }, .object_prefix = .{ 0, 0x10 }, .parent = participant, .definition = .{ .publisher = "pub" } }).encodeMessage(&wire);
+    try expect(.ok, client.createWire(try xrce.decodeCreateMessage(wire[0..named])));
+    const other = try (xrce.CreateBinary{ .session_id = 0x81, .sequence_nr = 0, .request_id = .{ 0, 3 }, .object_prefix = .{ 0, 0x20 }, .parent = participant, .definition = .{ .publisher = "other" } }).encodeMessage(&wire);
+    try expect(.ok, client.createWire(try xrce.decodeCreateMessage(wire[0..other])));
+    try testing.expectEqualStrings("other-publisher", client.definitionFor(.{ 0, 0x23 }).?.name);
     const w = try (xrce.CreateBinary{ .session_id = 0x81, .sequence_nr = 0, .request_id = .{ 0, 2 }, .object_prefix = .{ 0, 0x10 }, .parent = publisher, .definition = .{ .datawriter = "Reading" } }).encodeMessage(&wire);
     try expect(.err_denied, client.createWire(try xrce.decodeCreateMessage(wire[0..w])));
-    try testing.expectEqual(@as(usize, 3), fake.create_calls);
+    try testing.expectEqual(@as(usize, 4), fake.create_calls);
 }

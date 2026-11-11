@@ -1,14 +1,14 @@
 //! Opt-in CounterStatus publishing fixture. The real adapter itself is type-agnostic.
 const std = @import("std");
 const dds = @import("zzdds");
-const B = @import("backend.zig");
+const B = @import("zz0_agent_core").backend;
 const R = dds.resources;
 const provider = @import("counter_provider");
 pub const catalog: B.Catalog = .{ .definitions = &.{
     .{ .name = "MyLibrary::CounterParticipant", .kind = .participant, .participant = "main", .resource = "main", .domain = 0 },
     .{ .name = "MyLibrary::CounterStatusTopic", .kind = .topic, .participant = "main", .resource = "counter", .parent = "MyLibrary::CounterParticipant", .topic_name = "CounterStatusTopic" },
     .{ .name = "MyLibrary::CounterPublisher", .kind = .publisher, .participant = "main", .resource = "pub", .parent = "MyLibrary::CounterParticipant" },
-    .{ .name = "MyLibrary::CounterStatusWriter", .kind = .datawriter, .participant = "main", .resource = "counter", .parent = "MyLibrary::CounterPublisher", .topic = "MyLibrary::CounterStatusTopic", .telemetry = .counter_status },
+    .{ .name = "MyLibrary::CounterStatusWriter", .kind = .datawriter, .participant = "main", .resource = "counter", .parent = "MyLibrary::CounterPublisher", .topic = "MyLibrary::CounterStatusTopic" },
 } };
 pub fn prepare(alloc: std.mem.Allocator, domain: i32) !R.providers.Prepared {
     var plan = try R.Plan.resolve(alloc, .{ .name = "CounterStatus", .participants = &.{.{

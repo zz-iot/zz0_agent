@@ -33,6 +33,8 @@ def create_binary(request, object_id, kind, body, parent):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent", required=True, type=Path)
+    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--library", required=True, help="alias=path")
     parser.add_argument("--consumer", required=True, type=Path)
     parser.add_argument("--logs", required=True, type=Path)
     args = parser.parse_args()
@@ -44,7 +46,7 @@ def main():
         try:
             consumer = subprocess.Popen([str(args.consumer.resolve()), "--board=agent-smoke", "--count=3", "--timeout=15"], stdout=consumer_out, stderr=consumer_out)
             processes.append(consumer)
-            agent = subprocess.Popen([str(args.agent.resolve()), "--port=0", "--max-datagrams=107"], stdout=agent_out, stderr=agent_out)
+            agent = subprocess.Popen([str(args.agent.resolve()), "--config", str(args.config.resolve()), "--library", args.library, "--port=0", "--max-datagrams=107"], stdout=agent_out, stderr=agent_out)
             processes.append(agent)
             deadline = time.monotonic() + 10
             port = None
@@ -58,8 +60,8 @@ def main():
                 time.sleep(0.02)
             if port is None:
                 raise TimeoutError("agent startup")
-            if "DDS forwarding enabled (built-in CounterStatus configuration)" not in agent_log.read_text():
-                raise RuntimeError("default agent did not select DDS forwarding")
+            if "DDS forwarding enabled (configured providers)" not in agent_log.read_text():
+                raise RuntimeError("configured agent did not select DDS forwarding")
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
                 client.settimeout(5)
                 sequence = 0

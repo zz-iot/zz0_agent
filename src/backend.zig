@@ -8,7 +8,6 @@ pub const xcdr_revision = xrce.xcdr_revision;
 
 /// Modern XTypes 1.3 RTPS encapsulation identifiers.
 pub const Encoding = enum(u8) { plain_cdr2_le = 7, delimited_cdr2_le = 9, parameter_list_cdr2_le = 11 };
-pub const Telemetry = enum { none, counter_status };
 pub const Definition = struct {
     name: []const u8,
     kind: xrce.ObjectKind,
@@ -22,7 +21,6 @@ pub const Definition = struct {
     domain: ?i16 = null,
     /// Selected from the configured type's extensibility, never sample sniffing.
     encoding: Encoding = .plain_cdr2_le,
-    telemetry: Telemetry = .none,
 };
 pub const Catalog = struct {
     definitions: []const Definition,
@@ -34,7 +32,6 @@ pub const Catalog = struct {
             if (d.topic_name) |name| {
                 if (d.kind != .topic or name.len == 0 or name.len > 256 or std.mem.indexOfScalar(u8, name, 0) != null) return error.InvalidDefinition;
             }
-            if (d.telemetry != .none and d.kind != .datawriter) return error.InvalidDefinition;
             if (d.kind == .participant) {
                 if (!same(d.participant, d.resource) or d.parent != null or d.topic != null or d.domain == null or d.domain.? < 0 or d.domain.? > 232) return error.InvalidDefinition;
                 continue;
@@ -294,10 +291,11 @@ pub const Client = struct {
         self.last_error = null;
         self.state = .ready;
     }
-    pub fn telemetry(self: *const Client, id: xrce.ObjectId) ?Telemetry {
+    /// Borrowed catalog definition for a currently usable object.
+    pub fn definitionFor(self: *const Client, id: xrce.ObjectId) ?*const Definition {
         if (self.state != .ready) return null;
         const e = self.entries[self.lookup(id) orelse return null].?;
-        return self.catalog.definitions[e.definition].telemetry;
+        return &self.catalog.definitions[e.definition];
     }
 };
 /// Provisional adapter policy; exact operation mappings remain in the protocol audit.

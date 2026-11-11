@@ -3,23 +3,23 @@
 `src/backend.zig`, exported as `zz0_agent.backend`, is the normalized
 request/ownership boundary. It is exercised with both fake-backend tests and the
 [real DDS adapter and managed UDP registry](real-dds-backend.md). Real forwarding
-is the executable default, using the built-in CounterStatus configuration.
-The compatibility fixture requires `--validate-only`. These tests do not establish full XRCE conformance.
+is the configured executable path; CounterStatus uses explicit example inputs.
+The separate `zz0_agent_compat` executable retains `--validate-only`. These tests
+do not establish full XRCE conformance.
 
 ## Configuration and ownership
 
 A Catalog maps public definition names to resource definitions in a prepared DDS
 plan. It describes allowed parent/topic definitions, a concrete participant domain,
-the configured type's XCDR2 encoding and optional telemetry selection. It contains
-no client object IDs, native handles or library paths. Definitions may be supplied
+and the configured type's XCDR2 encoding. It contains no client object IDs, native handles or library paths. Definitions may be supplied
 in any order; validation checks names, kinds and references before backend calls.
 The real DDS adapter must also validate the names against its prepared plan and
 verify the encoding against the selected type's extensibility. This module does
 not add another TOML or QoS reader.
 
 Each Client borrows the immutable catalog and a separate, initially empty backend
-context. The future session registry must allocate stable client/backend storage
-and keep it alive until cleanup succeeds. Never copy a populated owner or bind two
+context. The managed session registry allocates stable client/backend storage
+and keeps it alive until cleanup succeeds. Never copy a populated owner or bind two
 clients to one mutable graph. Reusing a catalog or provider preparation is allowed;
 sharing mutable DDS entities between clients is not part of this contract.
 
@@ -57,12 +57,14 @@ retains the failure blocking the owner even when later requests are rejected.
 
 WRITE accepts one little-endian plain XRCE XCDR2 sample. It bounds the data to 512
 bytes and adds the configured encapsulation: plain, delimited or parameter-list
-CDR2. The backend must check the complete sample and key before writing, and must
+CDR2. The UDP datagram cap includes XRCE headers, so the transported body limit
+is smaller than this adapter cap. The backend must check the complete sample and
+key before writing, and must
 consume borrowed bytes synchronously. There is no encoding sniffing or conversion.
 Counters distinguish received, rejected and backend-accepted writes. A successful
-result does not establish subscriber receipt. Telemetry selection is by definition,
-not an object-ID constant; future dispatch must run optional telemetry only after
-backend acceptance, without turning a telemetry decode failure into a failed write.
+result does not establish subscriber receipt. The sample fixture selects optional telemetry by the resolved definition name
+after backend acceptance; a telemetry decode failure cannot reverse a successful
+write. The generic catalog and protocol engine have no CounterStatus choice.
 
 Leaf deletion checks both parent and topic dependencies. Successful backend deletion
 removes the association. A failure retains the mapping and blocks subsequent work
@@ -111,8 +113,8 @@ rejected before side effects. This is a declared subset, not full stream support
 Accepted backend writes are recorded before optional definition-selected telemetry.
 Malformed telemetry increments its diagnostic counter but cannot reverse backend
 acceptance. The original demo path retains its existing validation behavior.
-UDP templates explicitly reject an injected backend pointer until a client factory
-can allocate independent contexts, preventing accidental graph sharing across clients.
+UDP templates reject an injected backend pointer and use a client factory to
+allocate independent contexts, preventing accidental graph sharing across clients.
 
 Agent tests pass in Debug and ReleaseSafe, including short reply buffers, correlated
 STATUS, cleanup retry and the telemetry distinction. The shared client codecs have
