@@ -1,0 +1,48 @@
+schema_version = 1
+name = "IndependentProjects"
+
+[profiles.Wire.writer_qos]
+data_representation = "XCDR2"
+max_samples = 64
+max_instances = 8
+max_samples_per_instance = 8
+
+[profiles.Wire.reader_qos]
+data_representation = "XCDR2"
+max_samples = 64
+max_instances = 8
+max_samples_per_instance = 8
+
+[participants.main]
+domain_id = 204
+types = { "ProjectA::Temperature" = {}, "ProjectB::Pressure" = {}, "Common::Reading" = {} }
+topics = { temperature = { topic_name = "MultiTemperature", type_ref = "ProjectA::Temperature" }, pressure = { topic_name = "MultiPressure", type_ref = "ProjectB::Pressure" }, common = { topic_name = "MultiReading", type_ref = "Common::Reading" } }
+publishers = { pub = {} }
+subscribers = { audit = {} }
+
+[participants.main.writers.temperature]
+container_ref = "pub"
+topic_ref = "temperature"
+profile_ref = "Wire"
+[participants.main.writers.pressure]
+container_ref = "pub"
+topic_ref = "pressure"
+profile_ref = "Wire"
+[participants.main.writers.common]
+container_ref = "pub"
+topic_ref = "common"
+profile_ref = "Wire"
+
+# Used by the separate consumer, and deliberately absent from the XRCE catalog.
+[participants.main.readers.temperature]
+container_ref = "audit"
+topic_ref = "temperature"
+profile_ref = "Wire"
+[participants.main.readers.pressure]
+container_ref = "audit"
+topic_ref = "pressure"
+profile_ref = "Wire"
+[participants.main.readers.common]
+container_ref = "audit"
+topic_ref = "common"
+profile_ref = "Wire"

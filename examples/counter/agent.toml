@@ -1,0 +1,31 @@
+schema_version = 1
+resources = "resources.toml"
+
+[[bindings]]
+participant = "main"
+type_name = "CounterStatus"
+provider = "counter"
+
+[catalog."MyLibrary::CounterParticipant"]
+kind = "participant"
+participant = "main"
+resource = "main"
+
+[catalog."MyLibrary::CounterStatusTopic"]
+kind = "topic"
+participant = "main"
+resource = "counter"
+parent = "MyLibrary::CounterParticipant"
+
+[catalog."MyLibrary::CounterPublisher"]
+kind = "publisher"
+participant = "main"
+resource = "pub"
+parent = "MyLibrary::CounterParticipant"
+
+[catalog."MyLibrary::CounterStatusWriter"]
+kind = "datawriter"
+participant = "main"
+resource = "counter"
+parent = "MyLibrary::CounterPublisher"
+topic = "MyLibrary::CounterStatusTopic"

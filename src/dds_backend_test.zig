@@ -1,9 +1,9 @@
 const std = @import("std");
 const dds = @import("zzdds");
-const root = @import("root.zig");
-const B = @import("backend.zig");
-const Demo = @import("dds_demo.zig");
-const Real = @import("dds_backend.zig");
+const root = @import("fixture_root.zig");
+const B = @import("zz0_agent_core").backend;
+const Demo = @import("fixtures/dds_demo.zig");
+const Real = @import("zz0_agent_core").dds_backend;
 const X = root.xrce;
 const testing = std.testing;
 const DDS = dds.DDS;
@@ -42,17 +42,6 @@ fn write(s: *root.udp.ClientSessions, peer: std.Io.net.IpAddress, sid: u8, count
     const n = try (X.WriteData{ .session_id = sid, .sequence_nr = 5, .request_id = .{ 0, 5 }, .object_id = .{ 0, 0x15 }, .serialized_data = bytes.items }).encodeMessage(&req);
     return exchange(s, peer, req[0..n]);
 }
-fn take(reader: DDS.DataReader) !dds.OwnedRawSample {
-    const start = std.Io.Clock.awake.now(std.testing.io).nanoseconds;
-    while (std.Io.Clock.awake.now(std.testing.io).nanoseconds - start < 5 * std.time.ns_per_s) {
-        if (dds.takeRaw(reader)) |sample| {
-            if (sample.info.valid_data) return sample;
-            sample.deinit();
-        }
-        try (std.Io.Clock.Duration{ .clock = .awake, .raw = std.Io.Duration.fromMilliseconds(10) }).sleep(std.testing.io);
-    }
-    return error.SampleTimeout;
-}
 
 test "real backend delivers checked samples for independent clients and preserves repeated sessions" {
     var prepared = try Demo.prepare(testing.allocator, 190);
@@ -81,23 +70,30 @@ test "real backend delivers checked samples for independent clients and preserve
     try path(&sessions, peer2, 0x81, 190);
     try testing.expectEqual(@as(usize, 2), runtime.live_clients);
     try testing.expectError(error.LiveClients, runtime.deinit());
-    // Wait for discovery before checking DDS delivery; WRITE acceptance alone is
-    // not a receipt guarantee. Bounded retries also tolerate best-effort loss.
+    // Republish while discovery settles, and drain all queued samples each time.
+    // Reading only one after each pair of writes can repeatedly observe the same
+    // client and exhaust an attempt count while the other sample is still queued.
+    const data_reader = try receiver.reader(reader);
+    const start = std.Io.Clock.awake.now(testing.io).nanoseconds;
     var got_first = false;
     var got_second = false;
-    for (0..5) |_| {
+    while (std.Io.Clock.awake.now(testing.io).nanoseconds - start < 10 * std.time.ns_per_s) {
         try testing.expectEqual(X.StatusValue.ok, try write(&sessions, peer1, 0x81, 1, "first"));
         try testing.expectEqual(X.StatusValue.ok, try write(&sessions, peer2, 0x81, 2, "second"));
-        const sample = take(try receiver.reader(reader)) catch continue;
-        defer sample.deinit();
-        var r = try @import("zidl_rt").CdrReader.init(sample.data);
-        var value: @import("counter_types").CounterStatus = undefined;
-        try @import("counter_types").CounterStatus.deserializeInto(&value, &r, testing.allocator);
-        if (std.mem.eql(u8, value.board.slice(), "first")) got_first = true;
-        if (std.mem.eql(u8, value.board.slice(), "second")) got_second = true;
+        while (dds.takeRaw(data_reader)) |sample| {
+            defer sample.deinit();
+            if (!sample.info.valid_data) continue;
+            var r = try @import("zidl_rt").CdrReader.init(sample.data);
+            var value: @import("counter_types").CounterStatus = undefined;
+            try @import("counter_types").CounterStatus.deserializeInto(&value, &r, testing.allocator);
+            if (std.mem.eql(u8, value.board.slice(), "first")) got_first = true;
+            if (std.mem.eql(u8, value.board.slice(), "second")) got_second = true;
+        }
         if (got_first and got_second) break;
+        try (std.Io.Clock.Duration{ .clock = .awake, .raw = std.Io.Duration.fromMilliseconds(10) }).sleep(testing.io);
     }
-    try testing.expect(got_first and got_second);
+    try testing.expect(got_first);
+    try testing.expect(got_second);
     const owner = sessions.clients[0].?.agent.backend_client.?;
     const writes = owner.stats.accepted;
     try login(&sessions, peer1, 1, 0x81);

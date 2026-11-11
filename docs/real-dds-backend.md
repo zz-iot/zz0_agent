@@ -1,9 +1,9 @@
 # Local real-DDS backend checkpoint
 
-2026-10-30. The real adapter and managed UDP client ownership are implemented
-locally. The default executable path forwards CounterStatus into DDS; `--validate-only`
-selects the older compatibility fixture without forwarding.
-Neither mode is a claim of full XRCE conformance.
+Updated 2026-11-11. The real adapter, configured startup and managed UDP client
+ownership are implemented locally. The normal executable loads explicitly selected
+providers and forwards checked samples into DDS. `zz0_agent_compat` retains the
+validation-only compatibility fixture. Neither is a claim of full XRCE conformance.
 
 ## Shared code and dependency
 
@@ -22,7 +22,7 @@ The loadable-library prototype currently supports bounded final types. The real
 adapter therefore requires plain XCDR2 encoding and wire-validation-capable provider
 bindings. Generated appendable/mutable packet tests do not extend that library ABI.
 The adapter is type-agnostic within the provider subset; CounterStatus appears only
-in the built-in startup configuration and optional telemetry selection.
+in explicit example inputs and the separate compatibility/test fixtures.
 
 The agent and Pico DDS consumer pin published zzdds **0.3.11**, including
 incremental construction, explicit endpoint representation, provider ABI exports,
@@ -57,11 +57,13 @@ remain outside this subset.
 ## Executable fixture
 
 ```sh
+zig build fixtures -Doptimize=ReleaseSafe
 zig build -Doptimize=ReleaseSafe
-./zig-out/bin/zz0_agent --port=8888 --write-log=summary
+./zig-out/bin/zz0_agent --config examples/counter/agent.toml \
+  --library counter=zig-out/lib/libcounter_types.so --port=8888 --write-log=summary
 ```
 
-The built-in configuration uses DDS domain 0, topic `CounterStatusTopic`, type
+The explicit example configuration uses DDS domain 0, topic `CounterStatusTopic`, type
 `CounterStatus`, publisher definition `pub`, and the existing MyLibrary reference
 names for participants/topics. Publisher/writer CREATE uses the modern binary
 subset; legacy by-reference publisher/writer and empty XML are not enabled here.
@@ -73,15 +75,34 @@ see the evidence section below.
 This is a bounded publishing fixture: the graph capacity is 32 and endpoint limits
 are 256 samples/instances, with KEEP_LAST depth 1. Long-running applications need
 appropriate configuration and instance lifecycle; CounterStatus's counter is its
-key. DDS exhaustion maps to XRCE ERR_RESOURCES. General CLI provider paths, resource
-TOML and catalog authoring remain later startup integration; programmatic adapters
-already accept prepared provider bindings and a validated catalog.
+key. DDS exhaustion maps to XRCE ERR_RESOURCES. CLI provider paths, shared resource/profile TOML and agent catalog authoring are
+implemented; see the [startup design](configurable-startup-plan.md).
 
 For deterministic shutdown tests, `--max-datagrams=N` exits the serve loop normally
 after N datagrams and runs checked cleanup. Normal OS signal handling is unchanged;
 this fixture does not add a graceful SIGTERM protocol.
 
 ## Evidence
+
+Configured-startup recheck (2026-11-11):
+
+- All 62 core/fixture tests pass in Debug, ReleaseSafe and host LLVM TSan.
+- Real CLI checks pass in all three modes: offline validation, loaded inspection,
+  path bases, optional-setting diagnostics, hash/identity rejection and bind rollback.
+- Normal build/core tests succeed with a deliberately nonexistent Pico IDL path.
+- The ReleaseSafe normal executable loads the explicit CounterStatus library and
+  forwards three samples to the separate DDS consumer; RESET, client deletion and
+  bounded checked shutdown pass.
+- The ReleaseSafe compatibility executable passes the pinned independent eProsima
+  test. This remains local acceptance evidence, separate from DDS delivery.
+- Multi-project qualification passes in Debug, ReleaseSafe and host LLVM TSan:
+  two independently generated project libraries supply three selected types, with
+  a third library for collision checks. A separate DDS process verifies 18 distinct
+  type/client/phase receipts across initial publishing, RESET and reconnect.
+- The operator reports the configured Pico acceptance passed on 2026-11-11 with
+  the previous firmware images, including both-board receipt, agent restart,
+  each board reset independently and access-point recovery. See
+  [the recorded result](pico-acceptance.md#operator-reported-result-2026-11-11).
 
 Release-pin recheck (2026-11-09): agent and consumer use published zzdds 0.3.11
 and its zidl 0.3.27 dependency.
@@ -104,6 +125,8 @@ Run the smoke test after building the sibling consumer:
 
 ```sh
 python3 interop/dds_smoke.py --agent zig-out/bin/zz0_agent \
+  --config examples/counter/agent.toml \
+  --library counter=zig-out/lib/libcounter_types.so \
   --consumer ../zz0-pico-demo/dds-consumer/zig-out/bin/counter-consumer \
   --logs /tmp/agent-dds-smoke
 ```
@@ -111,8 +134,8 @@ python3 interop/dds_smoke.py --agent zig-out/bin/zz0_agent \
 The test uses modern hand-authored XRCE records and checks correlated STATUS, then
 actual consumer receipt. It keeps publishing through discovery instead of assuming
 WRITE acceptance or a short startup sleep guarantees a reader match. It uses our
-own DDS stack at both ends; an independent vendor subscriber/client, full startup
-configuration, longer soak tests and hardware malformed-data injection remain
+own DDS stack at both ends; an independent vendor subscriber/client, longer soak
+tests and hardware malformed-data injection remain
 separate work. These automated results are local Linux qualification only.
 
 
@@ -129,5 +152,17 @@ after the boards were already publishing.
 See [the consumer's detailed record](../../zz0-pico-demo/dds-consumer/README.md#hardware-results-2026-11-04).
 These observations were reported by the operator; raw logs were not supplied.
 They verify bounded DDS receipt and recovery using our stack, rather than just
-local sample acceptance. Longer soak tests, the reverse board-reset scenario and
+local sample acceptance. The reverse board-reset scenario was not part of that older pass; both board
+resets are covered by the configured-startup report below. Longer soak tests and
 independent-vendor interoperability remain unqualified.
+
+
+## Configured-startup hardware evidence (2026-11-11)
+
+The operator reports that the existing Pico/Pico2 firmware images passed the
+[configured-agent acceptance checklist](pico-acceptance.md#operator-reported-result-2026-11-11),
+without reflashing: both filtered DDS consumers, agent restart, resetting each
+board while the other remains active, and access-point loss/restoration. No raw
+logs, per-trial counter values or artifact hashes were supplied. This is new
+operator-reported cutover evidence, separate from the earlier built-in-startup
+record and the automated Linux qualification.

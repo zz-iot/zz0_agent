@@ -4,19 +4,38 @@ The agent currently implements a small DDS-XRCE subset for the Pico demo.
 This roadmap describes intended development order, not release commitments or
 an assertion of XRCE conformance.
 
-The next implementation is scoped in the
+The implemented publishing path is documented in the
 [DDS backend plan](docs/dds-backend-plan.md). Shared resource construction,
 authoring and multi-provider bindings are now available in zzdds (through PR
 #113). The agent now pins zzdds 0.3.11 for incremental construction, explicit
 endpoint wire representation and handle retirement. Client cleanup is part of
 the real backend.
 
+## Next: configurable startup
+
+The [startup design](docs/configurable-startup-plan.md) scopes multiple library
+inputs, shared resource/profile TOML, explicit XRCE reference mapping and startup
+validation. CounterStatus moves to an explicit example and integration-test lane;
+the normal executable no longer depends on the Pico repository. Hot reload stays
+outside this work. The core/fixture boundary is implemented locally: core
+tests run without Pico, and `test-fixtures` preserves sample/compatibility coverage.
+Offline manifest/resource resolution, provider-backed startup and the CLI cutover
+are implemented locally. The normal executable requires explicit configuration
+and no longer depends on Pico sample generation. CounterStatus and legacy CREATE
+conventions remain explicit fixtures. Multi-project qualification now passes in
+Debug, ReleaseSafe and host TSan, including separate-process DDS receipt across
+RESET/reconnect. The operator also reports the configured Pico hardware acceptance
+passed on 2026-11-11 with unchanged firmware; see
+[the recorded checklist result](docs/pico-acceptance.md#operator-reported-result-2026-11-11).
+The planned slices are complete locally; next comes PR review and hosted CI.
+
 ## Current state
 
 - UDP session registration for up to eight clients, with independent resources
   and statistics.
 - Participant/topic references and binary publisher/writer creation against a configured catalog.
-- WRITE_DATA validation, STATUS replies and generated CounterStatus decoding.
+- Provider-backed WRITE_DATA validation and STATUS replies; CounterStatus decoding
+  remains in explicit fixtures and the DDS consumer.
 - Tests for malformed packets, client isolation, registration/rebinding,
   resource validation and capacity limits.
 - Operator-reported DDS consumer receipt for Pico WH and Pico 2 WH together,
@@ -26,8 +45,8 @@ the real backend.
 
 Normal operation now creates DDS entities and forwards checked samples;
 [scope and local evidence](docs/real-dds-backend.md). Its OK status means DDS
-backend acceptance, not subscriber receipt. The explicit `--validate-only` compatibility fixture
-reports local acceptance without DDS forwarding.
+backend acceptance, not subscriber receipt. The explicit `zz0_agent_compat`
+executable reports local acceptance without DDS forwarding.
 The client registry has no idle expiry or authentication. This is a demo
 implementation, not a general-purpose or fully conformant XRCE agent.
 

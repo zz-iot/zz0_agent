@@ -1,0 +1,22 @@
+// Process orchestration only: DDS resource and QoS definitions stay in zzdds.
+enum AgentEntityKind { participant, topic, publisher, datawriter };
+struct AgentBinding {
+    string participant;
+    string type_name;
+    string provider;
+    @optional string expected_identifier;
+};
+struct AgentDefinition {
+    string name;
+    AgentEntityKind kind;
+    string participant;
+    string resource;
+    @optional string parent;
+    @optional string topic;
+};
+struct AgentManifest {
+    unsigned long schema_version;
+    string resources;
+    sequence<AgentBinding> bindings;
+    sequence<AgentDefinition> catalog;
+};

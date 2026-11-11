@@ -1,80 +1,127 @@
 # Zenzen Zero Agent
 
-Host-side DDS-XRCE agent for Zenzen Zero.
+Host-side DDS-XRCE agent for Zenzen Zero. It constructs client-owned DDS resources
+from an explicit configuration and forwards provider-validated samples. The current
+publishing subset supports bounded final types and modern XTypes 1.3 XCDR2.
+See the [backend checkpoint](docs/real-dds-backend.md) for scope and qualification.
 
-The UDP server supports up to eight demo clients. `CREATE_CLIENT` establishes a
-client key, peer address and session ID; subsequent datagrams are routed to that
-client. Normal operation constructs real DDS resources and forwards checked
-CounterStatus samples using the built-in configuration. See the
-[real backend checkpoint](docs/real-dds-backend.md) for its exact scope.
+## Build and configure
 
-Participant/topic CREATEs resolve configured references; publisher/writer CREATEs
-use binary definitions. The shared resource builder creates actual DDS objects
-with independent ownership per client. STATUS replies report construction and
-write results, including unknown references, mismatches and resource exhaustion.
-A successful write means DDS backend acceptance; subscriber receipt is checked
-separately. Generated CounterStatus validation rejects malformed samples with
-ERR_INVALID_DATA and supplies optional decoded telemetry.
-
-`--validate-only` selects the older compatibility test fixture. It accepts
-publisher/writer references and the eProsima empty-XML publisher convention,
-records resources and validates samples locally, and never forwards into DDS.
-Arbitrary XML entity creation remains unsupported. Use this mode only for
-compatibility tests, not the current Pico firmware.
-
-Runtime observability is optional:
-
-- `--write-log=none` disables per-sample output
-- `--write-log=summary` prints client key, object id, payload length, and per-client write count
-- For the Pico demo datawriter, `--write-log=summary` prints decoded
-  `CounterStatus` fields.
-- `--write-log=hex` prints a bounded hex dump of each payload
-- `--stats-every=N` prints per-client counters every `N` accepted writes
-- `--hex-bytes=N` limits the hex dump size for `--write-log=hex`
-
-## Build and run
-
-Use Zig 0.17.0. The current development layout expects sibling checkouts of
-`zz0_client` and `zz0-pico-demo`. DDS construction and provider support come from
-pinned zzdds **0.3.11**, which supplies zidl **0.3.27** for both generation and
-runtime code. A sibling zzdds checkout is no longer required.
-Hosted CI pins the companion client's merged binary CREATE and lifecycle support
-at commit `9ffef195bcac18d4695ef5f7a9c58a5bf9beab85` (zz0_client PR #2).
+Use Zig 0.17.0 and a sibling `zz0_client` checkout. Normal builds and core tests
+need no Pico checkout or sample-type generation. The agent pins zzdds **0.3.11**,
+which supplies zidl **0.3.27** for configuration generation, runtime code and the
+loadable typesupport contract. CI pins client PR #2's merged commit,
+`9ffef195bcac18d4695ef5f7a9c58a5bf9beab85`.
 
 ```sh
 zig build
 zig build test
-./zig-out/bin/zz0_agent --write-log=summary
+./zig-out/bin/zz0_agent --help
 ```
 
-The UDP listener uses port 8888 (`--port=N` overrides it; `--port=0` selects an
-ephemeral test port). Override the generator with
-`-Dzidl=/path/to/zidl` and the demo IDL with `-Dcounter-idl=/path/to/counter_types.idl`.
-The default uses the bounded CounterStatus DDS configuration: domain 0, topic
-`CounterStatusTopic`, XCDR2 endpoints and standard binary publisher/writer CREATEs.
-The Pico firmware uses this path. General provider/catalog configuration is still
-planned; this executable does not yet load arbitrary typesupport libraries.
+Serving requires three explicit inputs:
 
-## Demo client isolation
+- `--config FILE`: agent manifest with a resource filename, type bindings and
+  the XRCE references that clients may request.
+- The resource TOML file: zzdds participants, types, topics, endpoints, defaults
+  and profiles. Its path resolves relative to the manifest.
+- Repeatable `--library ALIAS=PATH`: generated typesupport libraries selected by
+  manifest bindings. Library paths resolve relative to the invocation directory.
 
-Each client has its own resources and decode/write counters. Different clients
-may use the same object IDs and session ID. The UDP peer plus session ID routes
-messages that omit the client key. Repeating CREATE_CLIENT with the same key and
-session ID preserves resources/counters and updates the peer address. A changed
-session ID first cleans up that client's DDS resources. Cleanup failure retains
-the client for a retry and blocks further construction/writes. RESET clears its
-resources; deleting the ProxyClient also frees its client slot. In
-`--validate-only`, each valid CREATE_CLIENT resets the local fixture's state.
-Conflicting keys on the same peer/session are rejected. Unknown sessions and
-malformed datagrams do not terminate the server.
+Repeatable `--sha256 ALIAS=64_HEX_DIGITS` constrains artifact hashes. Bindings may
+also constrain a Minimal TypeIdentifier with `expected_identifier` (30 hex digits).
+Both `--flag VALUE` and `--flag=VALUE` forms are accepted for valued options.
+Unknown ordinary settings fail; `_setting` permits unknown optional settings and
+reports them as skipped. Known invalid settings still fail. Catalog keys beginning
+with `_` are literal reference names. See the [startup design](docs/configurable-startup-plan.md).
 
-This is a bounded, unauthenticated demo registry, not a complete XRCE session
-implementation: keys identify clients rather than authenticate them, slots have
-no idle expiry, and a ninth distinct key is rejected until a client slot is freed.
-Using the same key on two active boards prevents independent ownership. Use the MAC-derived identities in the current Pico firmware.
+```sh
+./zig-out/bin/zz0_agent --config app-agent.toml \
+  --library project_a=providers/liba.so --library project_b=providers/libb.so \
+  --check-config
+```
 
-`zig build test` includes the protocol tests, UDP exchanges, overlapping-object
-isolation, reconnect behavior, malformed-packet handling, and client limits.
+`--check-config` parses both documents, resolves profiles, validates references and
+checks binding/alias constraints without accessing library files. It explicitly
+reports that provider ABI, export identity and capabilities remain unchecked.
+`--inspect` additionally loads native provider code and checks the exact exports,
+identities and wire capabilities; it reports hashes, generations, resolved settings
+and profile origins without creating a DDS factory, entities or UDP listener.
+Serving performs those checks before creating the factory and binding UDP last.
+There is no built-in configuration or validation-only fallback. `--help` and
+`--version` need no configuration. Hot reload is not implemented.
+
+## CounterStatus example
+
+With the sibling `zz0-pico-demo` IDL available, build the explicit fixtures:
+
+```sh
+zig build fixtures
+./zig-out/bin/zz0_agent --config examples/counter/agent.toml \
+  --library counter=zig-out/lib/libcounter_types.so --write-log=summary
+```
+
+Use the platform's actual shared-library filename (`.so` above is the Linux
+example). `-Dcounter-idl=PATH` overrides the demo IDL; `-Dzidl=PATH` overrides its
+bounded decoder generator. The provider/configuration generators use pinned zidl.
+The [resource file](examples/counter/resources.toml) selects DDS domain 0, topic
+`CounterStatusTopic`, XCDR2 and the existing Pico CREATE references. Firmware does
+not need different CREATE names. Decode sample fields using the demo DDS consumer;
+the production agent logs generic acceptance and bounded bytes.
+
+`zig build fixtures` also installs `zz0_agent_compat`, an explicit legacy test
+executable. It accepts publisher/writer references and the eProsima empty-XML
+publisher convention, validates CounterStatus locally and never forwards to DDS.
+The production executable rejects `--validate-only`. Arbitrary XML creation remains
+unsupported.
+
+## Sessions and observability
+
+The UDP listener defaults to port 8888; `--port=N` overrides it and `--port=0`
+selects an ephemeral port. Participant/topic CREATEs resolve exposed references;
+publisher/writer CREATEs use binary definitions. STATUS reports construction and
+backend write acceptance, including resource exhaustion and malformed samples.
+Subscriber receipt is checked separately. UDP datagrams are bounded to 512 bytes,
+including XRCE headers; fragmentation is outside the current subset.
+
+Up to eight clients have independent resources, generations and write counters,
+including when they reuse object IDs or session IDs. The peer plus session ID
+routes messages without a client key. Repeating CREATE_CLIENT with the same key
+and session preserves state and updates the peer address; changing the session
+first cleans up that client's DDS graph. Cleanup failures retain the owner for
+retry. RESET clears its graph; ProxyClient DELETE also frees its client slot.
+Unknown sessions and malformed packets do not terminate service.
+
+This registry is bounded and unauthenticated: keys identify clients, slots have no
+idle expiry, and a ninth key is rejected until a slot is freed. Use distinct client
+keys, such as the current Pico firmware's MAC-derived identities.
+
+- `--write-log=none|summary|hex` selects generic per-client write output.
+- `--stats-every=N` prints acceptance counters every N writes; zero disables it.
+- `--hex-bytes=N` bounds hex output.
+- `--max-datagrams=N` exits after N datagrams and performs checked cleanup.
+- `--handshake=omg_1_0|eprosima_v3` selects the explicit login layout.
+
+Normal OS signal handling is unchanged; bounded normal exit exercises checked
+cleanup, while this work does not add a graceful SIGTERM protocol.
+
+## Tests
+
+`zig build test` covers sample-independent protocol, UDP, configuration and CLI
+behavior. `zig build test-fixtures` covers CounterStatus, real DDS, loaded-provider
+ownership and compatibility regressions. `zig build test-startup` checks the real
+CLI's offline/inspection paths, constraints and failed-bind rollback using the
+generated provider. CI runs these in Debug, ReleaseSafe and host LLVM TSan; DSOs
+remain uninstrumented because Zig embeds an incompatible second sanitizer runtime
+in instrumented DSOs. The core CI job has no Pico checkout.
+
+`zig build test-multi-library` independently generates project libraries and drives
+one configured agent with two XRCE clients. A separate DDS process checks three
+types from both clients across RESET/reconnect, alongside equivalent/conflicting
+exports, unused exports and malformed samples. It needs no Pico checkout and runs
+in its own CI lane in Debug, ReleaseSafe and host TSan. See
+[the qualification details](interop/README.md#multiple-project-libraries) and
+[configured Pico hardware commands and reported results](docs/pico-acceptance.md).
 
 ## Roadmap
 

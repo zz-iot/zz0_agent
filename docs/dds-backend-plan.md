@@ -1,5 +1,8 @@
 # DDS backend implementation plan
 
+Follow-on: [configurable startup](configurable-startup-plan.md) covers removing
+the built-in sample, loading multiple libraries and reusing shared resource profiles.
+
 Design checkpoint: 2026-10-29. Slice 3 is merged in zzdds PR #113;
 this document scopes slice 4. No DDS forwarding is implemented by this document.
 
@@ -14,8 +17,8 @@ forwarding is the executable default. Both Pico boards have operator-reported
 consumer receipt and recovery after agent restart, Pico WH reset and WiFi loss.
 The companion client [wire audit](../../zz0_client/interop/binary-create-audit.md)
 records the explicit XTypes 1.3 encoding decision. CI pins the merged client PR #2
-commit. General provider/catalog startup and independent-vendor forwarding remain
-further work.
+commit. Configured provider/catalog startup is now implemented as described in
+the follow-on checkpoint below; independent-vendor forwarding remains further work.
 The existing disabled-parent child-deletion limitation remains; no atomic staging
 guarantee was added.
 
@@ -222,9 +225,21 @@ Do not count a host DDS smoke test as completed agent/hardware forwarding.
 
 Items 2–3 are implemented locally: see [real backend evidence](real-dds-backend.md).
 The agent uses published zzdds 0.3.11 and one shared zidl 0.3.27 runtime. The
-`zidl_typesupport` module export supplies the ABI for generated providers. DDS forwarding is now
-the executable default; the older compatibility fixture requires `--validate-only`.
+`zidl_typesupport` module export supplies the ABI for generated providers. The
+configured executable forwards through DDS; the older compatibility fixture lives
+in `zz0_agent_compat` and retains `--validate-only`.
 The Pico CREATE path uses standard binary publisher/writer records and is covered
 by a native backend test. Pico hardware acceptance is recorded above. General
-CLI provider/catalog startup and vendor-independent forwarding qualification
-remain subsequent work.
+CLI provider/catalog startup is covered by the follow-on checkpoint below;
+vendor-independent forwarding qualification remains subsequent work.
+
+
+## Configured startup follow-on (2026-11-11)
+
+The [configured startup design](configurable-startup-plan.md) is implemented locally:
+normal builds require explicit configuration/library inputs and no longer depend
+on the Pico repository. Offline validation, loaded inspection, shared profiles,
+explicit multi-provider selection and checked startup/shutdown are qualified in
+Debug, ReleaseSafe and host TSan. CounterStatus and legacy CREATE conventions are
+explicit fixture content. The operator reports the configured Pico acceptance
+passed with the previous firmware images; see [the result](pico-acceptance.md#operator-reported-result-2026-11-11).

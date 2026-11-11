@@ -2,7 +2,6 @@ const std = @import("std");
 const zz0_client = @import("zz0_client");
 
 const xrce = zz0_client.xrce;
-const demo = zz0_client.demo;
 
 pub const max_resources = 32;
 pub const max_reference_len = 128;
@@ -55,46 +54,6 @@ pub const ReferenceCatalog = struct {
         }
         return null;
     }
-};
-
-pub const default_reference_entries = [_]ReferenceDefinition{
-    .{
-        .object_kind = .application,
-        .reference = "DemoApp",
-    },
-    .{
-        .object_kind = .application,
-        .reference = "OtherApp",
-    },
-    .{
-        .object_kind = .participant,
-        .reference = "MyLibrary::MyParticipant",
-        .participant_domain_id = 0,
-    },
-    .{
-        .object_kind = demo.participant.object_kind,
-        .reference = demo.participant.reference,
-        .participant_domain_id = demo.participant.participant_domain_id,
-    },
-    .{
-        .object_kind = demo.topic.object_kind,
-        .reference = demo.topic.reference,
-        .related_object_id = demo.topic.related_object_id,
-    },
-    .{
-        .object_kind = demo.publisher.object_kind,
-        .reference = demo.publisher.reference,
-        .related_object_id = demo.publisher.related_object_id,
-    },
-    .{
-        .object_kind = demo.datawriter.object_kind,
-        .reference = demo.datawriter.reference,
-        .related_object_id = demo.datawriter.related_object_id,
-    },
-};
-
-pub const default_reference_catalog = ReferenceCatalog{
-    .entries = &default_reference_entries,
 };
 
 pub const CreateMode = struct {
@@ -262,25 +221,4 @@ fn optionalI16Eql(a: ?i16, b: ?i16) bool {
 fn optionalObjectIdEql(a: ?xrce.ObjectId, b: ?xrce.ObjectId) bool {
     if (a == null or b == null) return a == null and b == null;
     return std.mem.eql(u8, &a.?, &b.?);
-}
-
-test "empty XML publisher compatibility respects configured catalog context" {
-    var wire: [128]u8 = undefined;
-    const n = try (xrce.CreateByReference{
-        .session_id = 0x81,
-        .sequence_nr = 0,
-        .request_id = .{ 0, 1 },
-        .object_prefix = demo.publisher.object_prefix,
-        .object_kind = .publisher,
-        .representation_format = .as_xml_string,
-        .reference = "",
-        .related_object_id = demo.participant.object_id,
-    }).encodeMessage(&wire);
-    const create = try xrce.decodeCreateMessage(wire[0..n]);
-    try std.testing.expectEqual(xrce.StatusValue.ok, default_reference_catalog.validateCreate(create).status);
-    const empty = ReferenceCatalog{ .entries = &.{} };
-    try std.testing.expectEqual(xrce.StatusValue.err_unknown_reference, empty.validateCreate(create).status);
-    var other_parent = create;
-    other_parent.related_object_id = .{ 0x20, 0x11 };
-    try std.testing.expectEqual(xrce.StatusValue.err_unknown_reference, default_reference_catalog.validateCreate(other_parent).status);
 }
