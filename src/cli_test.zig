@@ -36,3 +36,16 @@ test "CLI rejects missing values, conflicts and fixture fallback" {
     try t.expectError(error.InvalidWriteLogMode, cli.parse(a, &.{ "--config=a", "--write-log=invalid" }));
     try t.expectError(error.InvalidHandshakeEncoding, cli.parse(a, &.{ "--config=a", "--handshake=invalid" }));
 }
+
+test "CLI idle timeout default, override, disabling and invalid values" {
+    var arena = std.heap.ArenaAllocator.init(t.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try t.expectEqual(@as(i64, 600), (try cli.parse(a, &.{"--config=a"})).client_idle_timeout.?.toSeconds());
+    try t.expect((try cli.parse(a, &.{ "--config=a", "--client-idle-timeout-seconds=0" })).client_idle_timeout == null);
+    try t.expectEqual(@as(i64, 12), (try cli.parse(a, &.{ "--config=a", "--client-idle-timeout-seconds", "12" })).client_idle_timeout.?.toSeconds());
+    try t.expectError(error.DuplicateIdleTimeout, cli.parse(a, &.{ "--config=a", "--client-idle-timeout-seconds=0", "--client-idle-timeout-seconds=1" }));
+    for ([_][]const u8{ "-1", "bad", "9223372036854775808" }) |value| {
+        if (cli.parse(a, &.{ "--config=a", "--client-idle-timeout-seconds", value })) |_| return error.ExpectedInvalidTimeout else |_| {}
+    }
+}

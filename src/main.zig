@@ -1,7 +1,7 @@
 const std = @import("std");
 const core = @import("zz0_agent");
 const dds = @import("zzdds");
-pub const std_options: std.Options = .{ .log_level = .warn };
+pub const std_options: std.Options = .{ .log_level = .warn, .log_scope_levels = &.{.{ .scope = .client_sessions, .level = .info }} };
 
 pub fn main(init: std.process.Init) u8 {
     run(init) catch |err| {
@@ -79,6 +79,10 @@ fn run(init: std.process.Init) !void {
     });
     const server = &startup.server.?;
     std.debug.print("zz0_agent: DDS forwarding enabled (configured providers)\n", .{});
+    server.sessions.idle_timeout = options.client_idle_timeout;
+    if (options.client_idle_timeout) |duration| {
+        std.debug.print("zz0_agent: client idle timeout {d}s\n", .{duration.toSeconds()});
+    } else std.debug.print("zz0_agent: client idle expiry disabled\n", .{});
     std.debug.print("zz0_agent: listening for DDS-XRCE UDP on port {d}\n", .{server.localAddress().getPort()});
     if (options.max_datagrams) |count| {
         for (0..count) |_| try server.serveOnce(init.io, .none);

@@ -148,3 +148,39 @@ test "UDP service survives a malformed packet and registers two clients" {
     try std.testing.expect(server.sessions.clients[1] != null);
     try std.testing.expect(!net.IpAddress.eql(&server.sessions.clients[0].?.peer, &server.sessions.clients[1].?.peer));
 }
+
+test "UDP idle maintenance runs without datagrams and preserves caller timeout" {
+    const io = std.testing.io;
+    var server = try UdpServer.bind(io, .{ .ip4 = .loopback(0) }, .{});
+    defer server.close(io) catch @panic("cleanup");
+    server.sessions.idle_timeout = .fromMilliseconds(10);
+    server.sessions.maintain(std.Io.Clock.awake.now(io).nanoseconds);
+    var request: [64]u8 = undefined;
+    var response: [64]u8 = undefined;
+    const n = try (root.xrce.CreateClient{ .client_key = .{ 1, 2, 3, 4 }, .session_id = 0x81 }).encodeMessage(&request);
+    _ = try server.sessions.handleDatagram(.{ .ip4 = .loopback(23400) }, request[0..n], &response);
+    // Internal maintenance must neither return as a datagram nor extend the
+    // caller's original deadline when it resumes receiving.
+    try std.testing.expectError(error.Timeout, server.serveOnce(io, timeoutMillis(200)));
+    try std.testing.expect(server.sessions.clients[0] == null);
+}
+
+test "UDP dispatch performs maintenance even when receive is already ready" {
+    const io = std.testing.io;
+    var server = try UdpServer.bind(io, .{ .ip4 = .loopback(0) }, .{});
+    defer server.close(io) catch @panic("cleanup");
+    server.sessions.idle_timeout = .fromMilliseconds(10);
+    var request: [64]u8 = undefined;
+    var response: [64]u8 = undefined;
+    const n = try (root.xrce.CreateClient{ .client_key = .{ 1, 2, 3, 4 }, .session_id = 0x81 }).encodeMessage(&request);
+    // An old timestamp makes this registration deterministically overdue.
+    _ = try server.sessions.handleDatagram(.{ .ip4 = .loopback(23400) }, request[0..n], &response);
+    const sender = try (net.IpAddress{ .ip4 = .loopback(0) }).bind(io, .{ .mode = .dgram, .protocol = .udp });
+    defer sender.close(io);
+    const address = server.localAddress();
+    try sender.send(io, &address, request[0..n]);
+    try server.serveOnce(io, timeoutMillis(1000));
+    _ = try sender.receiveTimeout(io, &response, timeoutMillis(1000));
+    try std.testing.expect(net.IpAddress.eql(&server.sessions.clients[0].?.peer, &sender.address));
+    try std.testing.expect(server.sessions.clients[0].?.last_activity > 0);
+}

@@ -1,16 +1,17 @@
 # Configurable agent startup
 
-Design checkpoint: 2026-11-09. Proposed next work after the merged DDS backend
-and Pico forwarding changes. This document describes intended behavior, not
-features already available in the executable.
+Design checkpoint: 2026-11-09. Completed and merged on 2026-11-11 in
+[agent PR #3](https://github.com/zz-iot/zz0_agent/pull/3) and
+[demo PR #3](https://github.com/zz-iot/zz0-pico-demo/pull/3). This document records
+the implemented startup contract, design decisions and acceptance checkpoints.
 
-## Result we want
+## Result
 
 A normal agent loads several independently generated typesupport libraries,
 selects the types its configuration needs, and lets XRCE clients construct their
 own DDS resources from those definitions. Adding a project does not rebuild the
 agent. A library may export many types; only explicitly selected types enter the
-resource plan. CounterStatus becomes an ordinary example using this same path.
+resource plan. CounterStatus is an ordinary example using this same path.
 
 Keep the publishing subset, per-client ownership and retryable cleanup already
 implemented. Keep modern XTypes 1.3, little-endian plain XCDR2 for direct forwarding.
@@ -340,8 +341,8 @@ nonexistent library path. The resolved writer is XCDR2, best-effort, depth 1, wi
 incomplete. The manifest schema and agent CLI are now implemented; see the slice
 checkpoints below for current qualification.
 
-No new product decision blocks slice 1. This plan needs implementation review,
-not a separate dependency release or expansion of the loadable ABI.
+The implementation uses the published zzdds 0.3.11 / zidl 0.3.27 baseline.
+Completion required no additional shared-library ABI or dependency release.
 
 ## Slice 1 checkpoint
 
@@ -466,13 +467,16 @@ Local Linux qualification passes in all three modes. Existing core/CounterStatus
 startup regressions also pass after sharing the provider-library build helper.
 This is our DDS implementation in both processes, not independent-vendor evidence.
 The explicit CounterStatus board commands and recovery checklist are in
-[pico-acceptance.md](pico-acceptance.md). Matching demo documentation is prepared
-in its clean worktree; the mixed firmware/MicroZig checkout is untouched.
+[pico-acceptance.md](pico-acceptance.md). Matching demo documentation is merged
+in demo PR #3.
 
 Physical Pico forwarding/recovery against configured startup was reported passed
 by the operator on 2026-11-11, using the previous firmware images without reflash.
 The report covers the acceptance document's both-board receipt, agent restart,
 each board reset independently and access-point recovery checks; raw logs and
 artifact hashes were not supplied. See [the result](pico-acceptance.md#operator-reported-result-2026-11-11).
-This completes the four implementation/acceptance slices locally. The older
-hardware record remains historical; PR review and hosted CI are still ahead.
+This completes the four implementation/acceptance slices. Both PRs are merged,
+and all three hosted CI jobs passed on the reviewed agent commit in
+[the qualification run](https://github.com/zz-iot/zz0_agent/actions/runs/43059511466).
+The older hardware record remains historical. DDS vendor interoperability belongs
+to zzdds's separate qualification effort; the agent acceptance is complete.

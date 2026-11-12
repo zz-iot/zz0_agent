@@ -49,6 +49,8 @@ pub fn AgentWithPolicy(comptime Policy: type) type {
         /// Single-client injection; the UDP registry uses a backend factory.
         /// The caller owns this stable context through successful cleanup.
         backend_client: ?*backend.Client = null,
+        /// Set only after a supported request has decoded and local output capacity is checked.
+        activity: bool = false,
         handshake_encoding: xrce.HandshakeEncoding = .omg_1_0,
         client_key: [4]u8 = @splat(0),
         vendor_id: [2]u8 = xrce.vendor_id_zenzen,
@@ -59,6 +61,7 @@ pub fn AgentWithPolicy(comptime Policy: type) type {
         hex_bytes: usize = 32,
 
         pub fn handleDatagram(self: *Self, input: []const u8, output: []u8) !usize {
+            self.activity = false;
             const message = try xrce.decodeMessage(input);
             var iterator = message.submessages();
             if (self.backend_client != null) {
@@ -82,9 +85,12 @@ pub fn AgentWithPolicy(comptime Policy: type) type {
                         const create = try xrce.decodeCreate(message.header, submessage);
                         if (self.backend_client) |client| {
                             if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                            self.activity = true;
                             const result = client.createWire(create);
                             return backendStatus(message.header, create.request_id, create.request_object_id, result, output);
                         }
+                        if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                        self.activity = true;
                         const result = self.policy.create(create);
                         return backendStatus(message.header, create.request_id, create.request_object_id, result, output);
                     },
@@ -92,6 +98,7 @@ pub fn AgentWithPolicy(comptime Policy: type) type {
                         const write = try xrce.decodeWriteData(message.header, submessage);
                         if (self.backend_client) |client| {
                             if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                            self.activity = true;
                             const result = client.write(write.object_id, write.serialized_data);
                             if (result.status == .ok) {
                                 self.write_stats.record(write);
@@ -99,6 +106,8 @@ pub fn AgentWithPolicy(comptime Policy: type) type {
                             }
                             return backendStatus(message.header, write.request_id, write.object_id, result, output);
                         }
+                        if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                        self.activity = true;
                         const result = self.policy.validateWrite(self.observation(write));
                         if (result.status == .ok) {
                             self.write_stats.record(write);
@@ -110,6 +119,7 @@ pub fn AgentWithPolicy(comptime Policy: type) type {
                         if (self.backend_client) |client| {
                             const request = try xrce.decodeDelete(message.header, submessage);
                             if (output.len < xrce.Status.message_len) return error.BufferTooSmall;
+                            self.activity = true;
                             const result = if (std.mem.eql(u8, &request.object_id, &[_]u8{ 0xff, 0xfe })) blk: {
                                 client.clear() catch |err| break :blk xrce.ResultStatus{ .status = backend.statusFor(err) };
                                 break :blk xrce.ResultStatus{ .status = .ok };
@@ -120,6 +130,7 @@ pub fn AgentWithPolicy(comptime Policy: type) type {
                     .reset => {
                         if (self.backend_client) |client| {
                             _ = try xrce.decodeReset(message.header, submessage);
+                            self.activity = true;
                             try client.clear();
                             return 0;
                         }
@@ -166,5 +177,6 @@ test {
     _ = @import("config_test.zig");
     _ = @import("cli_test.zig");
     _ = @import("udp_test.zig");
+    _ = @import("expiry_test.zig");
     _ = @import("backend_test.zig");
 }

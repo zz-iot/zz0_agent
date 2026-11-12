@@ -25,13 +25,25 @@ publisher configuration support.
 
 Existing conformance gaps include repeat-login resource reset (§7.8.2.1), absent
 stream ordering/duplicate suppression (§8.3.2.3), incomplete aligned/multiple
-submessage handling (§8.3.3), reliable streams and deletion. WRITE_DATA's STATUS
+submessage handling (§8.3.3) and reliable streams. Managed entity/ProxyClient
+deletion and RESET are implemented with checked cleanup. WRITE_DATA's STATUS
 requirement (§8.3.5.8) is not replaced by the eProsima test's behavior. An OK from
-our agent remains local validation; it does not mean a DDS write occurred.
+the normal agent means DDS backend acceptance, not subscriber receipt. The explicit
+compatibility fixture validates locally without DDS forwarding.
 
 The CI suite tests a documented interoperability subset. It does not establish
 any of the full conformance points defined in §2. On 2026-10-20 the operator
 confirmed both reflashed boards passed simultaneous decoded publishing,
 agent-restart recovery and WiFi reconnect recovery against the updated agent.
 This supplies operator-reported hardware evidence for the new wire behavior.
-Remote CI remains unrun.
+The configured startup qualification has since passed hosted CI; see the roadmap.
+
+
+Inactive-client expiry is an agent-local retention policy for the supported
+publishing subset, not a negotiated XRCE lease. The normal executable defaults to
+600 seconds and permits disabling expiry. Malformed traffic does not renew it;
+valid requests returning negative STATUS do. Expiry uses the same checked DDS
+cleanup as explicit client deletion, retains failed owners for retry and requires
+fresh login/resource creation after release. It does not add heartbeat handling,
+reliable streams or replay protection. See the
+[policy and acceptance plan](../docs/inactive-client-cleanup-plan.md).

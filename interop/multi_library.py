@@ -144,10 +144,15 @@ def main():
         setup += [(0, 1, create_reference(90, 0x4200, 2, "temperature", 0x1100), UNKNOWN)]
         recovery = [[], [(0, 12, b"", None), write(0, 1, 0, expected=UNKNOWN), write(1, 1, 1), *graph(0), login(1), *graph(1, MATCHED)], [login(0, 0x82), write(0, 2, 0, expected=UNKNOWN), write(1, 2, 1), *graph(0)]]
         rounds = 100
-        writes = [[write(client, phase, kind) for _ in range(rounds) for client in range(2) for kind in range(3)] for phase in range(3)]
+        writes = [[write(client, phase, kind) for _ in range(rounds) for client in range(2) for kind in range(3)] for phase in range(4)]
         final = [(0, 3, struct.pack("<HH", 100, 0xFEFF), OK)]
-        count = len(setup) + sum(map(len, recovery)) + sum(map(len, writes)) + len(final)
-        server = Process([args.agent.resolve(), *base, "--port=0", f"--max-datagrams={count}"], logs / "agent.log", ready="listening for DDS-XRCE UDP on port")
+        # Hold client 0 idle beyond the five-second test policy while client 1
+        # continues writing. Reconnect with the same key/session: its graph must
+        # be absent, while client 1's CREATE/REUSE still matches its live graph.
+        hold = [write(1, 2, 1) for _ in range(80)]
+        recovery.append([login(0, 0x82), write(0, 3, 0, expected=UNKNOWN), *graph(0), *graph(1, MATCHED)])
+        count = len(setup) + len(hold) + sum(map(len, recovery)) + sum(map(len, writes)) + len(final)
+        server = Process([args.agent.resolve(), *base, "--port=0", "--client-idle-timeout-seconds=5", f"--max-datagrams={count}"], logs / "agent.log", ready="listening for DDS-XRCE UDP on port")
         clients = []
         consumer = None
         try:
@@ -160,7 +165,16 @@ def main():
                     clients[client].exchange(kind, payload, expected)
 
             execute(setup)
-            for phase in range(3):
+            for phase in range(4):
+                if phase == 3:
+                    for operation in hold:
+                        execute([operation])
+                        time.sleep(0.1)
+                    output = "".join(server.lines)
+                    if "released inactive client=01020301" not in output:
+                        raise AssertionError("idle client was not reclaimed while its peer kept publishing")
+                    if "released inactive client=01020302" in output:
+                        raise AssertionError("active client expired")
                 execute(recovery[phase])
                 consumer = Process([args.consumer.resolve(), str(phase), *base], logs / f"consumer-{phase}.log", ready="multi-library consumer ready")
                 consumer.wait_ready()
@@ -184,7 +198,7 @@ def main():
             for client in clients:
                 client.socket.close()
             server.close()
-    print("PASS: independent libraries, explicit equivalent/conflicting exports, 18 DDS receipts, isolated clients, malformed samples, RESET/reconnect and live-graph shutdown")
+    print("PASS: independent libraries, explicit equivalent/conflicting exports, 24 DDS receipts, isolated clients, malformed samples, RESET/reconnect, idle expiry and live-graph shutdown")
 
 
 if __name__ == "__main__":

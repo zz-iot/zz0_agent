@@ -11,23 +11,24 @@ authoring and multi-provider bindings are now available in zzdds (through PR
 endpoint wire representation and handle retirement. Client cleanup is part of
 the real backend.
 
-## Next: configurable startup
+## Completed: configurable startup
 
-The [startup design](docs/configurable-startup-plan.md) scopes multiple library
-inputs, shared resource/profile TOML, explicit XRCE reference mapping and startup
-validation. CounterStatus moves to an explicit example and integration-test lane;
-the normal executable no longer depends on the Pico repository. Hot reload stays
-outside this work. The core/fixture boundary is implemented locally: core
-tests run without Pico, and `test-fixtures` preserves sample/compatibility coverage.
-Offline manifest/resource resolution, provider-backed startup and the CLI cutover
-are implemented locally. The normal executable requires explicit configuration
-and no longer depends on Pico sample generation. CounterStatus and legacy CREATE
-conventions remain explicit fixtures. Multi-project qualification now passes in
-Debug, ReleaseSafe and host TSan, including separate-process DDS receipt across
-RESET/reconnect. The operator also reports the configured Pico hardware acceptance
-passed on 2026-11-11 with unchanged firmware; see
-[the recorded checklist result](docs/pico-acceptance.md#operator-reported-result-2026-11-11).
-The planned slices are complete locally; next comes PR review and hosted CI.
+The [startup design](docs/configurable-startup-plan.md) is implemented and merged in
+[agent PR #3](https://github.com/zz-iot/zz0_agent/pull/3), with the companion
+instructions and hardware record merged in
+[demo PR #3](https://github.com/zz-iot/zz0-pico-demo/pull/3) on 2026-11-11.
+
+The normal executable loads explicitly selected typesupport libraries, resolves
+shared resource/profile TOML and exposes configured XRCE references. Core builds
+and tests need no Pico checkout. CounterStatus and legacy compatibility are explicit
+fixtures. All three hosted CI jobs passed, including multi-project DDS receipt
+across RESET/reconnect. The operator also reports configured Pico acceptance with
+unchanged firmware; see [the recorded result](docs/pico-acceptance.md#operator-reported-result-2026-11-11).
+The four planned implementation/acceptance slices are complete.
+
+DDS interoperability with other vendors is covered by zzdds's separate interop
+work. Agent qualification focuses on XRCE behavior, resource/provider mapping and
+receipt through zzdds consumers. Hot reload remains later, application-driven work.
 
 ## Current state
 
@@ -47,21 +48,20 @@ Normal operation now creates DDS entities and forwards checked samples;
 [scope and local evidence](docs/real-dds-backend.md). Its OK status means DDS
 backend acceptance, not subscriber receipt. The explicit `zz0_agent_compat`
 executable reports local acceptance without DDS forwarding.
-The client registry has no idle expiry or authentication. This is a demo
+The client registry has configurable idle expiry but no authentication. This is a demo
 implementation, not a general-purpose or fully conformant XRCE agent.
 
 ## 1. Establish interoperability and scope
 
 The pinned eProsima client test now covers the limited request/sample subset
-documented in `interop/README.md`. CI configuration is included; remote CI
-execution is not yet evidence. The normative review and remaining compliance
+documented in `interop/README.md`, with successful hosted CI execution in
+[the PR #3 qualification run](https://github.com/zz-iot/zz0_agent/actions/runs/43059511466).
+The normative review and remaining compliance
 gaps are recorded in `interop/spec-audit.md`; eProsima-specific login encoding
 is opt-in. Remaining:
 
 - Maintain a support matrix against the OMG DDS-XRCE specification, documenting
   supported messages, representations, session/stream behavior and limits.
-- Exercise an independent XRCE client against this agent, starting with
-  CREATE_CLIENT, by-reference CREATE and WRITE_DATA.
 - Add independently sourced wire fixtures and negative cases; shared code with
   zz0_client must not be the only protocol oracle.
 - Define explicit behavior for unsupported requests and multi-submessage packets.
@@ -69,30 +69,35 @@ is opt-in. Remaining:
 Exit criterion: a documented subset works with an independent implementation,
 with automated regressions for discrepancies found.
 
-## 2. Bridge a known type into zzdds
+## 2. Bridge configured types into zzdds — completed
 
 The [initial backend adapter](docs/backend-adapter.md) now provides normalized
 request handling, per-client associations and retryable cleanup with fake-backend
-tests. Managed UDP ownership and real DDS forwarding are implemented locally;
-see the [real backend checkpoint](docs/real-dds-backend.md). The existing demo path is
-unchanged.
+tests. Managed UDP ownership and configured real DDS forwarding are merged;
+see the [real backend checkpoint](docs/real-dds-backend.md). Completed:
 
-- Separate XRCE request handling from DDS backend operations and demo telemetry.
-- Map configured references to actual zzdds participants, topics, publishers
+- Separated XRCE request handling from DDS backend operations and demo telemetry.
+- Mapped configured references to actual zzdds participants, topics, publishers
   and datawriters, using zidl-generated typesupport for known types.
-- Forward CounterStatus writes and map backend failures to appropriate statuses.
-- Define precisely what a successful write response guarantees.
+- Forwarded CounterStatus writes and mapped backend failures to appropriate statuses.
+- Defined precisely what a successful write response guarantees.
 
-Exit criterion: samples from both Pico boards reach an independent DDS
-subscriber through zzdds, with client resources kept separate.
+Acceptance: samples from both Pico boards reach separate DDS consumer processes
+through zzdds, with client resources kept separate. This is covered by automated
+checks and the operator-reported hardware pass. DDS vendor qualification is owned
+by the separate zzdds interop effort.
 
 General XTypes DynamicData is not a prerequisite for this milestone. A configured
 catalog of generated types is sufficient for a deliberately limited bridge.
 
 ## 3. Complete lifecycle and strengthen delivery behavior
 
-- Add entity/session deletion, resource cleanup and bounded client reclamation.
-- Specify duplicate registration, endpoint rebinding and restart behavior.
+Entity/ProxyClient deletion, RESET, checked cleanup, repeat-login behavior, peer
+rebinding and restart recovery are implemented and covered. Remaining:
+
+- Inactive-client reclamation is implemented with retryable cleanup and
+  automated expiry/reconnection checks. A short-timeout hardware pass remains;
+  see the [cleanup design](docs/inactive-client-cleanup-plan.md).
 - Test packet loss, duplication, reordering, delayed replies and sequence wrap.
 - Implement reliable stream behavior, acknowledgement/retransmission and
   duplicate suppression for the supported profile, coordinated with zz0_client.
