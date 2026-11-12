@@ -8,6 +8,7 @@ pub const Options = struct {
     libraries: []const []const u8 = &.{},
     hashes: []const []const u8 = &.{},
     port: u16 = 8888,
+    client_idle_timeout: ?std.Io.Duration = .fromSeconds(600),
     handshake_encoding: core.xrce.HandshakeEncoding = .omg_1_0,
     write_log_mode: core.WriteLogMode = .none,
     max_datagrams: ?usize = null,
@@ -18,6 +19,7 @@ pub fn parse(a: std.mem.Allocator, args: []const []const u8) !Options {
     var result: Options = .{};
     var libraries: std.ArrayList([]const u8) = .empty;
     var hashes: std.ArrayList([]const u8) = .empty;
+    var idle_seen = false;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
@@ -38,6 +40,10 @@ pub fn parse(a: std.mem.Allocator, args: []const []const u8) !Options {
         } else if (try value(args, &i, "--sha256")) |v| {
             if (hashes.items.len == 32) return error.ConstraintLimit;
             try hashes.append(a, v);
+        } else if (try value(args, &i, "--client-idle-timeout-seconds")) |v| {
+            if (idle_seen) return error.DuplicateIdleTimeout;
+            idle_seen = true;
+            result.client_idle_timeout = try core.udp.parseIdleTimeoutSeconds(v);
         } else if (try value(args, &i, "--port")) |v| {
             result.port = try std.fmt.parseUnsigned(u16, v, 10);
         } else if (try value(args, &i, "--handshake")) |v| {
@@ -79,6 +85,7 @@ pub const usage =
     \\usage: zz0_agent --config FILE [--library ALIAS=PATH ...] [--sha256 ALIAS=HEX ...]
     \\                 [--check-config | --inspect] [--port=N] [--max-datagrams=N]
     \\                 [--handshake=omg_1_0|eprosima_v3] [--write-log=none|summary|hex]
+    \\                 [--client-idle-timeout-seconds=N] (default 600; 0 disables expiry)
     \\                 [--stats-every=N] [--hex-bytes=N]
     \\  --check-config validates both TOML files without accessing library files.
     \\  --inspect loads native provider code; creates no DDS entities or sockets.

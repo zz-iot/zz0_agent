@@ -13,11 +13,56 @@ pub fn Sessions(comptime Agent: type) type {
             session_id: u8,
             agent: Agent,
             closing: bool = false,
+            last_activity: i96 = 0,
+            expired: bool = false,
+            retry_at: i96 = 0,
+            cleanup_reported: bool = false,
         };
 
         template: Agent = .{},
         backend_factory: ?root.backend.ClientFactory = null,
         clients: [max_clients]?Client = @splat(null),
+        /// Null disables expiry. Direct users call maintain() before dispatch.
+        idle_timeout: ?std.Io.Duration = null,
+        now: i96 = 0,
+
+        /// Serialized with packet handling; timestamps use the awake clock.
+        pub fn maintain(self: *Self, now: i96) void {
+            self.now = @max(self.now, now);
+            for (&self.clients) |*slot| {
+                if (slot.*) |*client| {
+                    if (!client.expired) {
+                        const duration = self.idle_timeout orelse continue;
+                        if (self.now - client.last_activity < duration.nanoseconds) continue;
+                        client.expired = true;
+                        std.log.scoped(.client_sessions).info("expiring inactive client={x} session=0x{x}", .{ client.key, client.session_id });
+                    }
+                    if (self.now < client.retry_at) continue;
+                    if (self.backend_factory) |factory| {
+                        retire(factory, client) catch |err| {
+                            client.retry_at = self.now +| std.time.ns_per_s;
+                            if (!client.cleanup_reported) {
+                                std.log.warn("inactive client={x} cleanup failed: {s}; retaining owner for retry", .{ client.key, @errorName(err) });
+                                client.cleanup_reported = true;
+                            }
+                            continue;
+                        };
+                    }
+                    std.log.scoped(.client_sessions).info("released inactive client={x}", .{client.key});
+                    slot.* = null;
+                }
+            }
+        }
+
+        pub fn nextMaintenance(self: *const Self) ?i96 {
+            var next: ?i96 = null;
+            for (self.clients) |slot| {
+                const client = slot orelse continue;
+                const due = if (client.expired) client.retry_at else if (self.idle_timeout) |duration| client.last_activity +| duration.nanoseconds else continue;
+                next = if (next) |prior| @min(prior, due) else due;
+            }
+            return next;
+        }
 
         pub fn handleDatagram(self: *Self, peer: net.IpAddress, input: []const u8, output: []u8) !usize {
             if (self.template.backend_client != null) return error.BackendRequiresClientFactory;
@@ -45,16 +90,18 @@ pub fn Sessions(comptime Agent: type) type {
                     var response_agent: Agent = .{ .handshake_encoding = self.template.handshake_encoding, .vendor_id = self.template.vendor_id };
                     const n = try response_agent.handleDatagram(input, output);
                     if (self.clients[index]) |*existing| {
+                        if (existing.expired) return error.ClientCleanupRequired;
                         if (existing.session_id == create.session_id) {
                             if (existing.closing) return error.ClientCleanupRequired;
                             existing.peer = peer;
+                            existing.last_activity = self.now;
                             return n; // Same session preserves graph, generation and counters.
                         }
                         try retire(factory, existing);
                         self.clients[index] = null;
                     }
                     const owner = try factory.open(factory.context, create.client_key, create.session_id);
-                    self.clients[index] = .{ .key = create.client_key, .peer = peer, .session_id = create.session_id, .agent = .{
+                    self.clients[index] = .{ .key = create.client_key, .peer = peer, .session_id = create.session_id, .last_activity = self.now, .agent = .{
                         .backend_client = owner,
                         .policy = self.template.policy.fresh(),
                         .handshake_encoding = self.template.handshake_encoding,
@@ -81,6 +128,7 @@ pub fn Sessions(comptime Agent: type) type {
                     .key = create.client_key,
                     .peer = peer,
                     .session_id = create.session_id,
+                    .last_activity = self.now,
                     .agent = agent,
                 };
                 if (agent.write_log_mode != .none) std.debug.print("zz0_agent: client={x} session=0x{x} peer={f} connected\n", .{ create.client_key, create.session_id, peer });
@@ -89,6 +137,7 @@ pub fn Sessions(comptime Agent: type) type {
             for (&self.clients) |*slot| {
                 if (slot.*) |*client| {
                     if (client.session_id == message.header.session_id and net.IpAddress.eql(&client.peer, &peer)) {
+                        if (client.expired) return error.ClientCleanupRequired;
                         if (self.backend_factory) |factory| {
                             if (first.header.id == .delete) {
                                 const request = try root.xrce.decodeDelete(message.header, first);
@@ -104,6 +153,9 @@ pub fn Sessions(comptime Agent: type) type {
                             }
                             if (client.closing and first.header.id == .reset) return error.ClientCleanupRequired;
                         }
+                        defer if (client.agent.activity and !client.closing) {
+                            client.last_activity = self.now;
+                        };
                         return client.agent.handleDatagram(input, output);
                     }
                 }
@@ -163,17 +215,35 @@ pub fn Server(comptime Agent: type) type {
         }
 
         pub fn serveOnce(self: *Self, io: std.Io, timeout: std.Io.Timeout) !void {
-            var request: [512]u8 = undefined;
-            const incoming = try self.socket.receiveTimeout(io, &request, timeout);
-
-            var response: [512]u8 = undefined;
-            const response_len = self.sessions.handleDatagram(incoming.from, incoming.data, &response) catch |err| {
-                // A stale session after an agent restart or a malformed packet must
-                // not terminate service for all the other clients.
-                if (err != error.UnknownClientSession) std.log.warn("ignoring XRCE datagram from {f}: {s}", .{ incoming.from, @errorName(err) });
+            const caller_deadline = timeout.toTimestamp(io);
+            while (true) {
+                self.sessions.maintain(std.Io.Clock.awake.now(io).nanoseconds);
+                var wait: std.Io.Timeout = .none;
+                if (self.sessions.nextMaintenance()) |due| {
+                    wait = .{ .deadline = .{ .clock = .awake, .raw = .{ .nanoseconds = due } } };
+                }
+                if (caller_deadline) |deadline| {
+                    const remaining = deadline.durationFromNow(io);
+                    if (remaining.raw.nanoseconds <= 0) return error.Timeout;
+                    if (wait.toDurationFromNow(io)) |maintenance| {
+                        if (remaining.raw.nanoseconds < maintenance.raw.nanoseconds) wait = .{ .deadline = deadline };
+                    } else wait = .{ .deadline = deadline };
+                }
+                var request: [512]u8 = undefined;
+                const incoming = self.socket.receiveTimeout(io, &request, wait) catch |err| switch (err) {
+                    error.Timeout => continue, // Maintenance, then recheck the original caller deadline.
+                    else => return err,
+                };
+                self.sessions.maintain(std.Io.Clock.awake.now(io).nanoseconds);
+                var response: [512]u8 = undefined;
+                const response_len = self.sessions.handleDatagram(incoming.from, incoming.data, &response) catch |err| {
+                    // A stale or malformed packet must not stop unrelated clients.
+                    if (err != error.UnknownClientSession and err != error.ClientCleanupRequired) std.log.warn("ignoring XRCE datagram from {f}: {s}", .{ incoming.from, @errorName(err) });
+                    return;
+                };
+                if (response_len != 0) try self.socket.send(io, &incoming.from, response[0..response_len]);
                 return;
-            };
-            if (response_len != 0) try self.socket.send(io, &incoming.from, response[0..response_len]);
+            }
         }
 
         pub fn serveForever(self: *Self, io: std.Io) !void {
@@ -188,4 +258,10 @@ pub fn timeoutMillis(ms: i64) std.Io.Timeout {
         .clock = .awake,
         .raw = std.Io.Duration.fromMilliseconds(ms),
     } };
+}
+
+/// Zero disables expiry; the bound matches Duration.fromSeconds without narrowing overflow.
+pub fn parseIdleTimeoutSeconds(text: []const u8) !?std.Io.Duration {
+    const seconds = try std.fmt.parseUnsigned(u63, text, 10);
+    return if (seconds == 0) null else std.Io.Duration.fromSeconds(@intCast(seconds));
 }

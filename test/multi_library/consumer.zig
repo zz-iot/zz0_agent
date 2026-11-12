@@ -11,7 +11,7 @@ pub fn main(init: std.process.Init) !void {
     defer iterator.deinit();
     _ = iterator.next();
     const phase = try std.fmt.parseUnsigned(u32, iterator.next() orelse return error.ExpectedPhase, 10);
-    if (phase > 2) return error.InvalidPhase;
+    if (phase > 3) return error.InvalidPhase;
     var args: std.ArrayList([]const u8) = .empty;
     while (iterator.next()) |arg| try args.append(a, arg);
     const options = try core.cli.parse(a, args.items);

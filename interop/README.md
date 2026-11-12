@@ -108,7 +108,10 @@ there is no automatic winner, assignability check or implicit replacement.
 
 Two XRCE clients then reuse the same object IDs through one configured normal
 agent. A separate DDS consumer process verifies all three selected types from both
-clients, initially and after RESET/reconnect. The test checks malformed/trailing
+clients, initially, after RESET, after reconnect and after idle expiry/recreation
+(24 distinct receipts). With a five-second test timeout, one client keeps writing
+while the other expires; same-key/session login then requires a fresh graph.
+The active client retains its graph. The test checks malformed/trailing
 samples, resource names that have no public XRCE reference, repeated REUSE/login,
 client deletion and normal shutdown with another client's graph still live.
 The consumer loads the same provider selections, creates only its own readers and
@@ -116,5 +119,5 @@ decodes sample fields through the CDR reader without linked generated sample typ
 These are Linux tests using our DDS implementation in both processes, rather than
 independent-vendor DDS interoperability or physical-board evidence.
 
-See [the Pico acceptance commands](../docs/pico-acceptance.md) for the remaining
-hardware pass against configured startup.
+See [the Pico acceptance commands](../docs/pico-acceptance.md) for the completed
+configured-startup hardware record and the pending short-timeout expiry check.

@@ -8,6 +8,7 @@ pub const dds_demo = @import("fixtures/dds_demo.zig");
 pub const WriteLogMode = core.WriteLogMode;
 pub const Agent = core.AgentWithPolicy(@import("fixtures/counter.zig").Policy);
 pub const udp = struct {
+    pub const parseIdleTimeoutSeconds = core.udp.parseIdleTimeoutSeconds;
     pub const timeoutMillis = core.udp.timeoutMillis;
     pub const ClientSessions = core.udp.Sessions(Agent);
     pub const UdpServer = core.udp.Server(Agent);

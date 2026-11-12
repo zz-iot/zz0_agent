@@ -92,9 +92,24 @@ first cleans up that client's DDS graph. Cleanup failures retain the owner for
 retry. RESET clears its graph; ProxyClient DELETE also frees its client slot.
 Unknown sessions and malformed packets do not terminate service.
 
-This registry is bounded and unauthenticated: keys identify clients, slots have no
-idle expiry, and a ninth key is rejected until a slot is freed. Use distinct client
-keys, such as the current Pico firmware's MAC-derived identities.
+The normal executable expires clients after 600 seconds without a valid supported
+request. `--client-idle-timeout-seconds=N` changes that interval; `0` disables it.
+Valid requests refresh activity even when their STATUS reports an error; malformed
+or unknown-session traffic does not. Expiry releases the client's DDS graph and
+slot. Failed cleanup retains a blocked owner and retries at most once per second,
+while other clients continue. Expiration and release are logged by client key.
+Returning clients must log in and recreate their resources; the Pico application
+already has timeout/recreation logic. Quiet applications should increase or disable
+the timeout. On Linux host suspension does not count toward idle time.
+
+The registry remains bounded and unauthenticated: a ninth key is rejected until a
+slot is freed; active clients are never evicted to admit it. Use distinct client
+keys, such as the current Pico firmware's MAC-derived identities. This is a local
+retention policy, not negotiated liveliness or reliable-stream support. Reusable
+session/server APIs and the compatibility executable default to expiry disabled;
+direct session users call `maintain()` with awake-clock timestamps before dispatch.
+See the [cleanup design](docs/inactive-client-cleanup-plan.md) for failure and
+reconnection rules.
 
 - `--write-log=none|summary|hex` selects generic per-client write output.
 - `--stats-every=N` prints acceptance counters every N writes; zero disables it.
@@ -117,7 +132,8 @@ in instrumented DSOs. The core CI job has no Pico checkout.
 
 `zig build test-multi-library` independently generates project libraries and drives
 one configured agent with two XRCE clients. A separate DDS process checks three
-types from both clients across RESET/reconnect, alongside equivalent/conflicting
+types from both clients across RESET/reconnect and idle expiry/recreation (24
+distinct receipts), alongside equivalent/conflicting
 exports, unused exports and malformed samples. It needs no Pico checkout and runs
 in its own CI lane in Debug, ReleaseSafe and host TSan. See
 [the qualification details](interop/README.md#multiple-project-libraries) and
@@ -125,12 +141,12 @@ in its own CI lane in Debug, ReleaseSafe and host TSan. See
 
 ## Roadmap
 
-An initial [client-owned backend adapter](docs/backend-adapter.md) is implemented
-and tested with managed UDP ownership and default DDS forwarding.
+The [client-owned backend adapter](docs/backend-adapter.md) and configured startup
+are merged and qualified with managed UDP ownership and DDS forwarding.
 See the [real backend checkpoint](docs/real-dds-backend.md).
 
 See the [DDS backend implementation plan](docs/dds-backend-plan.md) for the
-next integration steps and the boundary between shared zzdds construction and
+implementation checkpoints and the boundary between shared zzdds construction and
 client-owned XRCE resources.
 
 See [ROADMAP.md](ROADMAP.md) for current scope, interoperability goals and the

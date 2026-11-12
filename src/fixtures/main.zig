@@ -1,5 +1,5 @@
 const std = @import("std");
-pub const std_options: std.Options = .{ .log_level = .warn };
+pub const std_options: std.Options = .{ .log_level = .warn, .log_scope_levels = &.{.{ .scope = .client_sessions, .level = .info }} };
 const zz0_agent = @import("zz0_agent");
 
 pub fn main(init: std.process.Init) !void {
@@ -14,6 +14,10 @@ pub fn main(init: std.process.Init) !void {
     var server = try zz0_agent.udp.UdpServer.bind(io, bind_address, template);
     defer server.close(io) catch @panic("server cleanup");
 
+    server.sessions.idle_timeout = config.client_idle_timeout;
+    if (config.client_idle_timeout) |duration| {
+        std.debug.print("zz0_agent: client idle timeout {d}s\n", .{duration.toSeconds()});
+    } else std.debug.print("zz0_agent: client idle expiry disabled\n", .{});
     std.debug.print("zz0_agent: {s}\n", .{"validation-only compatibility mode; samples are not forwarded"});
     std.debug.print("zz0_agent: listening for DDS-XRCE UDP on port {d}\n", .{server.localAddress().getPort()});
     if (config.max_datagrams) |count| {
@@ -25,6 +29,7 @@ const Config = struct {
     max_datagrams: ?usize = null,
     handshake_encoding: zz0_agent.xrce.HandshakeEncoding = .omg_1_0,
     port: u16 = 8888,
+    client_idle_timeout: ?std.Io.Duration = null,
     write_log_mode: zz0_agent.WriteLogMode = .none,
     stats_every: ?u64 = null,
     hex_bytes: usize = 32,
@@ -34,6 +39,7 @@ fn parseArgs(args: std.process.Args, allocator: std.mem.Allocator) !Config {
     var it = try std.process.Args.iterateAllocator(args, allocator);
     defer it.deinit();
     var config: Config = .{};
+    var idle_seen = false;
     _ = it.next();
     while (it.next()) |arg| {
         if (std.mem.eql(u8, arg, "--help")) {
@@ -42,6 +48,10 @@ fn parseArgs(args: std.process.Args, allocator: std.mem.Allocator) !Config {
         } else if (std.mem.startsWith(u8, arg, "--max-datagrams=")) {
             config.max_datagrams = try std.fmt.parseUnsigned(usize, arg[16..], 10);
             if (config.max_datagrams.? == 0) return error.InvalidDatagramLimit;
+        } else if (std.mem.startsWith(u8, arg, "--client-idle-timeout-seconds=")) {
+            if (idle_seen) return error.DuplicateIdleTimeout;
+            idle_seen = true;
+            config.client_idle_timeout = try zz0_agent.udp.parseIdleTimeoutSeconds(arg["--client-idle-timeout-seconds=".len..]);
         } else if (std.mem.eql(u8, arg, "--validate-only")) {
             // Retain the old runner spelling; this executable only validates.
         } else if (std.mem.startsWith(u8, arg, "--handshake=")) {
@@ -73,6 +83,7 @@ fn parseArgs(args: std.process.Args, allocator: std.mem.Allocator) !Config {
 fn printUsage() void {
     std.debug.print(
         \\usage: zz0_agent_compat [--handshake=omg_1_0|eprosima_v3] [--port=N] [--validate-only] [--max-datagrams=N] [--write-log=none|summary|hex] [--stats-every=N] [--hex-bytes=N]
+        \\  --client-idle-timeout-seconds=N enables idle expiry; 0 disables it (default).
         \\  Legacy reference/empty-XML and CounterStatus validation fixture.
         \\  No DDS forwarding; --validate-only is accepted for existing test runners.
         \\

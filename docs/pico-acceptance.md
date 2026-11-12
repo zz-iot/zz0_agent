@@ -117,3 +117,34 @@ This is operator-reported evidence for configured startup with unchanged firmwar
 no raw logs, per-trial counter values or artifact hashes accompanied the report.
 It completes the planned physical-board acceptance for this change. Longer soak,
 independent-vendor DDS and graceful signal shutdown remain outside this pass.
+
+
+## Inactive-client expiry acceptance
+
+Use the current firmware and the agent built with inactive-client cleanup. Start
+with the command above plus `--client-idle-timeout-seconds=15`. Confirm both
+consumers receive samples. Power off one board for at least 15 seconds, leaving
+the agent and other board running. The agent must report expiration and release
+of that board's client key; the other board must keep forwarding. Restart both
+consumers, restore the powered-off board and confirm both receive 10 samples.
+Repeat with the other board. A board power cycle also resets its application
+counter, so lower counters are expected.
+
+To exercise recovery of a running application after its graph expires, leave both
+boards powered and interrupt their WiFi connection longer than 15 seconds. Wait
+for both client-release messages, restore WiFi, and confirm both consumers receive
+10 samples after the firmware's existing retry/backoff completes. Keep the agent
+running throughout. Record the agent commit, flashed firmware and results. This
+checks expiry recovery specifically; earlier hardware acceptance does not cover it.
+
+
+### Operator-reported result (2026-11-12)
+
+The operator observed the client-expiry message after the default 600-second
+interval. After restoring the boards, the operator confirmed that both consumers
+received 10 samples again. This supplies hardware evidence for idle expiry and
+successful forwarding recovery after the agent releases the client resources.
+
+The report did not include raw logs, artifact hashes or separate results for every
+per-board/WiFi trial above. The observed expiry used the ten-minute default; a
+15-second rerun was suggested but its use was not separately confirmed.

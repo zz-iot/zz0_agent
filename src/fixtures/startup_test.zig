@@ -68,7 +68,10 @@ test "failed UDP bind retains initialized owners for checked cleanup" {
     try t.expect(startup.factory != null and startup.runtime != null);
     try t.expectEqual(@as(usize, 1), startup.environment.manager.liveGenerations());
 }
-test "failed client cleanup retains libraries and can be retried" {
+test "failed inactive-client cleanup retains loaded providers through retry and shutdown" {
+    const previous = t.log_level;
+    t.log_level = .err;
+    defer t.log_level = previous;
     var cfg = try configuration();
     defer cfg.deinit();
     var stage: core.startup.Stage = .libraries;
@@ -94,11 +97,22 @@ test "failed client cleanup retains libraries and can be retried" {
     var response: [64]u8 = undefined;
     const n = try (core.xrce.CreateClient{ .client_key = .{ 1, 2, 3, 4 }, .session_id = 0x81 }).encodeMessage(&request);
     _ = try startup.server.?.sessions.handleDatagram(.{ .ip4 = .loopback(23123) }, request[0..n], &response);
+    const sessions = &startup.server.?.sessions;
+    const owner = sessions.clients[0].?.agent.backend_client.?;
+    try t.expectEqual(core.xrce.StatusValue.ok, owner.create(.{ .object_id = .{ 0, 0x11 }, .definition = "MyLibrary::CounterParticipant", .domain = 0 }).status);
+    sessions.idle_timeout = .fromSeconds(10);
+    sessions.maintain(10 * std.time.ns_per_s);
+    try t.expect(sessions.clients[0].?.expired and sessions.clients[0].?.closing);
+    try t.expectEqual(owner, sessions.clients[0].?.agent.backend_client.?);
     try t.expectError(error.CleanupFailed, startup.close(t.io));
     try t.expect(startup.server != null and startup.factory != null and startup.runtime != null);
     try t.expectEqual(@as(usize, 1), startup.runtime.?.live_clients);
     try t.expectEqual(@as(usize, 1), startup.environment.manager.liveGenerations());
     factory.fail = false;
+    sessions.maintain(11 * std.time.ns_per_s);
+    try t.expect(sessions.clients[0] == null);
+    try t.expectEqual(@as(usize, 0), startup.runtime.?.live_clients);
+    try t.expectEqual(@as(usize, 1), startup.environment.manager.liveGenerations());
     try startup.close(t.io);
 }
 

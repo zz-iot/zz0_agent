@@ -1,7 +1,7 @@
 # Local real-DDS backend checkpoint
 
-Updated 2026-11-11. The real adapter, configured startup and managed UDP client
-ownership are implemented locally. The normal executable loads explicitly selected
+Updated 2026-11-12. The real adapter, configured startup and managed UDP client
+ownership are merged in [agent PR #3](https://github.com/zz-iot/zz0_agent/pull/3). The normal executable loads explicitly selected
 providers and forwards checked samples into DDS. `zz0_agent_compat` retains the
 validation-only compatibility fixture. Neither is a claim of full XRCE conformance.
 
@@ -134,9 +134,10 @@ python3 interop/dds_smoke.py --agent zig-out/bin/zz0_agent \
 The test uses modern hand-authored XRCE records and checks correlated STATUS, then
 actual consumer receipt. It keeps publishing through discovery instead of assuming
 WRITE acceptance or a short startup sleep guarantees a reader match. It uses our
-own DDS stack at both ends; an independent vendor subscriber/client, longer soak
-tests and hardware malformed-data injection remain
-separate work. These automated results are local Linux qualification only.
+own DDS stack at both ends. DDS vendor interoperability is qualified in the
+separate zzdds interop effort. Longer soak tests and hardware malformed-data
+injection remain separate agent work. These automated results are Linux
+qualification only.
 
 
 ## Operator-reported hardware evidence (2026-11-04)
@@ -153,8 +154,8 @@ See [the consumer's detailed record](../../zz0-pico-demo/dds-consumer/README.md#
 These observations were reported by the operator; raw logs were not supplied.
 They verify bounded DDS receipt and recovery using our stack, rather than just
 local sample acceptance. The reverse board-reset scenario was not part of that older pass; both board
-resets are covered by the configured-startup report below. Longer soak tests and
-independent-vendor interoperability remain unqualified.
+resets are covered by the configured-startup report below. Longer soak tests
+remain outside this record; DDS vendor qualification is handled separately in zzdds.
 
 
 ## Configured-startup hardware evidence (2026-11-11)
@@ -166,3 +167,15 @@ board while the other remains active, and access-point loss/restoration. No raw
 logs, per-trial counter values or artifact hashes were supplied. This is new
 operator-reported cutover evidence, separate from the earlier built-in-startup
 record and the automated Linux qualification.
+
+
+## Merge and CI closeout (2026-11-12)
+
+[Agent PR #3](https://github.com/zz-iot/zz0_agent/pull/3) merged as `18758aa` and
+[demo PR #3](https://github.com/zz-iot/zz0-pico-demo/pull/3) merged as `85f9e02`
+on 2026-11-11. The reviewed agent commit `19ad4e6` passed all three jobs in
+[hosted CI](https://github.com/zz-iot/zz0_agent/actions/runs/43059511466): core,
+multi-library and test-and-independent-interop. The final test fix drains available
+DDS samples while polling for both clients, preserving the actual-receipt check.
+Configured startup's planned implementation, automated qualification and
+operator-reported hardware acceptance are complete.
