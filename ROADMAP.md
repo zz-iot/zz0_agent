@@ -96,8 +96,9 @@ Entity/ProxyClient deletion, RESET, checked cleanup, repeat-login behavior, peer
 rebinding and restart recovery are implemented and covered. Remaining:
 
 - Inactive-client reclamation is implemented with retryable cleanup and
-  automated expiry/reconnection checks. A short-timeout hardware pass remains;
-  see the [cleanup design](docs/inactive-client-cleanup-plan.md).
+  automated expiry/reconnection checks. The operator also confirmed default-timeout
+  expiry and resumed consumer receipt on hardware; see the
+  [cleanup design](docs/inactive-client-cleanup-plan.md).
 - Test packet loss, duplication, reordering, delayed replies and sequence wrap.
 - Implement reliable stream behavior, acknowledgement/retransmission and
   duplicate suppression for the supported profile, coordinated with zz0_client.

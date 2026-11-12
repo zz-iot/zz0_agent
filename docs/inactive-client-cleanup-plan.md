@@ -1,8 +1,9 @@
 # Inactive client cleanup
 
 Design and implementation checkpoint, 2026-11-12. Session expiry, UDP maintenance,
-CLI policy and automated recovery checks are implemented locally. Short-timeout
-physical-board acceptance remains outstanding.
+CLI policy and automated recovery checks are implemented. The operator has
+confirmed default-timeout expiry and subsequent DDS receipt on physical boards;
+see the [hardware record](pico-acceptance.md#operator-reported-result-2026-11-12).
 
 ## Problem and scope
 
@@ -183,4 +184,7 @@ The 70 core/fixture tests pass in Debug, ReleaseSafe and host LLVM TSan, as do
 the configured startup checks and the four-phase multi-library DDS scenario.
 The pinned independent eProsima compatibility client also passes. The current
 ReleaseSafe normal executable and CounterStatus fixture are installed locally
-for the pending physical-board expiry check.
+for the physical-board expiry check. On 2026-11-12 the operator reported
+observing expiry at the default 600 seconds and successful consumer receipt after
+restoring the boards. Detailed per-trial logs and a short-timeout rerun were not
+separately reported.

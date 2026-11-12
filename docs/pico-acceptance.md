@@ -119,7 +119,7 @@ It completes the planned physical-board acceptance for this change. Longer soak,
 independent-vendor DDS and graceful signal shutdown remain outside this pass.
 
 
-## Inactive-client expiry acceptance (pending)
+## Inactive-client expiry acceptance
 
 Use the current firmware and the agent built with inactive-client cleanup. Start
 with the command above plus `--client-idle-timeout-seconds=15`. Confirm both
@@ -136,3 +136,15 @@ for both client-release messages, restore WiFi, and confirm both consumers recei
 10 samples after the firmware's existing retry/backoff completes. Keep the agent
 running throughout. Record the agent commit, flashed firmware and results. This
 checks expiry recovery specifically; earlier hardware acceptance does not cover it.
+
+
+### Operator-reported result (2026-11-12)
+
+The operator observed the client-expiry message after the default 600-second
+interval. After restoring the boards, the operator confirmed that both consumers
+received 10 samples again. This supplies hardware evidence for idle expiry and
+successful forwarding recovery after the agent releases the client resources.
+
+The report did not include raw logs, artifact hashes or separate results for every
+per-board/WiFi trial above. The observed expiry used the ten-minute default; a
+15-second rerun was suggested but its use was not separately confirmed.
