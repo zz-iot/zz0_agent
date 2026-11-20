@@ -5,7 +5,7 @@ const Agent = root.Agent;
 const xrce = root.xrce;
 const resources = root.resources;
 const demo = @import("zz0_client").demo;
-const zidl_rt = @import("zidl_rt");
+const zidl_cdr = @import("zidl_cdr");
 const counter_types = @import("counter_types");
 fn expectAgentDatagram(agent: *Agent, input: []const u8, output: []u8) !usize {
     return agent.handleDatagram(input, output);
@@ -225,8 +225,8 @@ test "agent accepts WRITE_DATA for created datawriter" {
     var payload_buf: [128]u8 = undefined;
     const payload = try encodeCounterStatusForTest(payload_buf[0..], .{
         .counter = 42,
-        .board = try zidl_rt.BoundedArray(u8, 16).fromSlice("agent-test"),
-        .payload = try zidl_rt.BoundedArray(u8, 8).fromSlice(&.{ 1, 2, 3, 4 }),
+        .board = try zidl_cdr.BoundedArray(u8, 16).fromSlice("agent-test"),
+        .payload = try zidl_cdr.BoundedArray(u8, 8).fromSlice(&.{ 1, 2, 3, 4 }),
     });
 
     var write_request: [256]u8 = undefined;
@@ -342,8 +342,8 @@ test "agent accepts many WRITE_DATA samples without resource exhaustion" {
         var payload_buf: [128]u8 = undefined;
         const payload = try encodeCounterStatusForTest(payload_buf[0..], .{
             .counter = i,
-            .board = try zidl_rt.BoundedArray(u8, 16).fromSlice("agent-test"),
-            .payload = try zidl_rt.BoundedArray(u8, 8).fromSlice(&.{ @truncate(i & 0xff), @truncate(i >> 8) }),
+            .board = try zidl_cdr.BoundedArray(u8, 16).fromSlice("agent-test"),
+            .payload = try zidl_cdr.BoundedArray(u8, 8).fromSlice(&.{ @truncate(i & 0xff), @truncate(i >> 8) }),
         });
 
         const write_len = try (xrce.WriteData{
@@ -368,7 +368,7 @@ fn encodeCounterStatusForTest(out: []u8, sample: counter_types.CounterStatus) ![
     var bytes = std.ArrayListUnmanaged(u8).empty;
     defer bytes.deinit(allocator);
 
-    var writer = zidl_rt.CdrWriter(.xcdr2).init(&bytes, allocator);
+    var writer = zidl_cdr.CdrWriter(.xcdr2).init(&bytes, allocator);
     try counter_types.CounterStatus.serialize(&writer, sample);
     if (bytes.items.len > out.len) return error.BufferTooSmall;
     @memcpy(out[0..bytes.items.len], bytes.items);

@@ -118,7 +118,7 @@ test "failed inactive-client cleanup retains loaded providers through retry and 
 
 test "configured provider survives live writes through checked host shutdown" {
     const client = @import("zz0_client");
-    const rt = @import("zidl_rt");
+    const rt = @import("zidl_cdr");
     const Sample = @import("counter_types").CounterStatus;
     var cfg = try configuration();
     defer cfg.deinit();

@@ -27,7 +27,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const zidl_rt_mod = dds_dep.module("zidl_rt");
+    const cdr_mod = dds_dep.module("zidl_cdr");
+    const bindings_mod = dds_dep.module("zidl_bindings");
 
     const gen_counter_types = if (zidl_exe) |path| b.addSystemCommand(&.{path}) else b.addRunArtifact(dds_dep.artifact("zidl"));
     gen_counter_types.addArgs(&.{ "-b", "zig" });
@@ -43,7 +44,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "zidl_rt", .module = zidl_rt_mod },
+            .{ .name = "zidl_cdr", .module = cdr_mod }, .{ .name = "zidl_bindings", .module = bindings_mod },
         },
     });
 
@@ -66,9 +67,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .sanitize_thread = sanitize_thread,
-        .imports = &.{.{ .name = "zidl_rt", .module = zidl_rt_mod }},
+        .imports = &.{ .{ .name = "zidl_cdr", .module = cdr_mod }, .{ .name = "zidl_bindings", .module = bindings_mod } },
     }));
-    mod.addImport("zidl_rt", zidl_rt_mod);
+    mod.addImport("zidl_cdr", cdr_mod);
+    mod.addImport("zidl_bindings", bindings_mod);
     // Explicit sample/compatibility fixtures; absent from the normal executable.
     const fixture_mod = b.createModule(.{
         .root_source_file = b.path("src/fixture_root.zig"),
@@ -78,7 +80,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "zz0_agent_core", .module = mod },
             .{ .name = "zz0_client", .module = zz0_client_dep.module("zz0_client") },
-            .{ .name = "zidl_rt", .module = zidl_rt_mod },
+            .{ .name = "zidl_cdr", .module = cdr_mod },
+            .{ .name = "zidl_bindings", .module = bindings_mod },
             .{ .name = "counter_types", .module = counter_types_mod },
             .{ .name = "zzdds", .module = dds_dep.module("zzdds") },
         },
@@ -124,31 +127,39 @@ pub fn build(b: *std.Build) void {
         .root_source_file = encoding_dir.path(b, "modern_encoding.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "zidl_rt", .module = zidl_rt_mod }},
+        .imports = &.{ .{ .name = "zidl_cdr", .module = cdr_mod }, .{ .name = "zidl_bindings", .module = bindings_mod } },
     }));
 
     const gen_provider = b.addRunArtifact(dds_dep.artifact("zidl"));
     gen_provider.addArgs(&.{ "-b", "zig", "--experimental-typesupport-library", "-o" });
     const provider_dir = gen_provider.addOutputDirectoryArg("counter-provider");
     gen_provider.addFileArg(.{ .cwd_relative = counter_idl });
-    const provider_types = b.createModule(.{ .root_source_file = provider_dir.path(b, "counter_types.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "zidl_rt", .module = zidl_rt_mod }} });
+    const provider_types = b.createModule(.{ .root_source_file = provider_dir.path(b, "counter_types.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "zidl_cdr", .module = cdr_mod }, .{ .name = "zidl_bindings", .module = bindings_mod } } });
     fixture_mod.addImport("counter_provider", b.createModule(.{
         .root_source_file = provider_dir.path(b, "counter_types_typesupport.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{ .{ .name = "types", .module = provider_types }, .{ .name = "zidl_rt", .module = zidl_rt_mod }, .{ .name = "zidl_typesupport", .module = dds_dep.module("zidl_typesupport") } },
+        .imports = &.{ .{ .name = "types", .module = provider_types }, .{ .name = "zidl_cdr", .module = cdr_mod }, .{ .name = "zidl_bindings", .module = bindings_mod }, .{ .name = "zidl_typesupport", .module = dds_dep.module("zidl_typesupport") } },
     }));
 
     // As in zzdds's provider tests, instrument the host, not dlopen fixtures:
     // Zig embeds a second TSan runtime into instrumented DSOs (initial-exec TLS).
     const abi = dds_dep.module("zidl_typesupport");
-    const library_rt = if (sanitize_thread) b.createModule(.{ .root_source_file = zidl_rt_mod.root_source_file, .target = target, .optimize = optimize, .sanitize_thread = false }) else zidl_rt_mod;
+    const library_cdr = if (sanitize_thread) b.createModule(.{ .root_source_file = cdr_mod.root_source_file, .target = target, .optimize = optimize, .sanitize_thread = false }) else cdr_mod;
+    const library_bindings = if (sanitize_thread) b.createModule(.{
+        .root_source_file = bindings_mod.root_source_file,
+        .target = target,
+        .optimize = optimize,
+        .sanitize_thread = false,
+        .imports = &.{.{ .name = "zidl_cdr", .module = library_cdr }},
+    }) else bindings_mod;
+    const library_rt: Runtime = .{ .cdr = library_cdr, .bindings = library_bindings };
     const library_abi = if (sanitize_thread) b.createModule(.{
         .root_source_file = abi.root_source_file,
         .target = target,
         .optimize = optimize,
         .sanitize_thread = false,
-        .imports = &.{ .{ .name = "zidl_rt", .module = library_rt }, .{ .name = "zidl_typesupport_c", .module = abi.import_table.get("zidl_typesupport_c").? } },
+        .imports = &.{ .{ .name = "zidl_cdr", .module = library_cdr }, .{ .name = "zidl_typesupport_c", .module = abi.import_table.get("zidl_typesupport_c").? } },
     }) else abi;
     const counter_library = addProviderLibrary(b, provider_dir, "counter_types", library_rt, library_abi, target, optimize);
     fixtures.dependOn(&b.addInstallArtifact(counter_library, .{}).step);
@@ -178,7 +189,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .sanitize_thread = sanitize_thread,
             .link_libc = true,
-            .imports = &.{ .{ .name = "zz0_agent", .module = mod }, .{ .name = "zzdds", .module = dds_dep.module("zzdds") }, .{ .name = "zidl_rt", .module = zidl_rt_mod } },
+            .imports = &.{ .{ .name = "zz0_agent", .module = mod }, .{ .name = "zzdds", .module = dds_dep.module("zzdds") }, .{ .name = "zidl_cdr", .module = cdr_mod }, .{ .name = "zidl_bindings", .module = bindings_mod } },
         }),
     });
     const multi = b.addSystemCommand(&.{ "python3", "interop/multi_library.py", "--agent" });
@@ -215,14 +226,16 @@ pub fn build(b: *std.Build) void {
     b.step("test-fixtures", "Run CounterStatus, real DDS and compatibility regressions").dependOn(&b.addRunArtifact(fixture_tests).step);
 }
 
-fn addProviderLibrary(b: *std.Build, dir: std.Build.LazyPath, stem: []const u8, rt: *std.Build.Module, abi: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
-    const types = b.createModule(.{ .root_source_file = dir.path(b, b.fmt("{s}.zig", .{stem})), .target = target, .optimize = optimize, .sanitize_thread = false, .imports = &.{.{ .name = "zidl_rt", .module = rt }} });
+const Runtime = struct { cdr: *std.Build.Module, bindings: *std.Build.Module };
+
+fn addProviderLibrary(b: *std.Build, dir: std.Build.LazyPath, stem: []const u8, rt: Runtime, abi: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+    const types = b.createModule(.{ .root_source_file = dir.path(b, b.fmt("{s}.zig", .{stem})), .target = target, .optimize = optimize, .sanitize_thread = false, .imports = &.{ .{ .name = "zidl_cdr", .module = rt.cdr }, .{ .name = "zidl_bindings", .module = rt.bindings } } });
     const provider = b.createModule(.{
         .root_source_file = dir.path(b, b.fmt("{s}_typesupport.zig", .{stem})),
         .target = target,
         .optimize = optimize,
         .sanitize_thread = false,
-        .imports = &.{ .{ .name = "types", .module = types }, .{ .name = "zidl_rt", .module = rt }, .{ .name = "zidl_typesupport", .module = abi } },
+        .imports = &.{ .{ .name = "types", .module = types }, .{ .name = "zidl_cdr", .module = rt.cdr }, .{ .name = "zidl_bindings", .module = rt.bindings }, .{ .name = "zidl_typesupport", .module = abi } },
     });
     return b.addLibrary(.{ .name = stem, .linkage = .dynamic, .use_llvm = true, .root_module = provider });
 }

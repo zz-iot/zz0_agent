@@ -2,7 +2,7 @@
 const std = @import("std");
 const core = @import("zz0_agent");
 const dds = @import("zzdds");
-const rt = @import("zidl_rt");
+const rt = @import("zidl_cdr");
 pub const std_options: std.Options = .{ .log_level = .warn };
 
 pub fn main(init: std.process.Init) !void {

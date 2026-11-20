@@ -20,7 +20,7 @@ cd ../..
 ```
 
 The explicit fixture build generates `libcounter_types.so` from the sibling Pico
-IDL with pinned zidl 0.3.27. The agent and consumer use zzdds 0.3.11. Normal agent
+IDL with pinned zidl 0.3.37. The agent and consumer use zzdds 0.3.13. Normal agent
 builds need no Pico checkout; this particular example needs its IDL. These commands
 use Linux's library filename.
 

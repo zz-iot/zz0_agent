@@ -34,7 +34,7 @@ fn createTestPath(sessions: *ClientSessions, peer: net.IpAddress) !void {
 }
 
 fn writeTestSample(sessions: *ClientSessions, peer: net.IpAddress, board: []const u8, counter: u32) !root.xrce.StatusValue {
-    const rt = @import("zidl_rt");
+    const rt = @import("zidl_cdr");
     const Sample = @import("counter_types").CounterStatus;
     var storage: [256]u8 = undefined;
     var arena = std.heap.FixedBufferAllocator.init(&storage);
