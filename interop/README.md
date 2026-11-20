@@ -9,7 +9,7 @@ CounterStatus acceptance. Both the client status and the agent's decoded fields
 `{counter=42, board="eprosima", payload length=3}` are asserted. A truncated
 sample must return ERR_INVALID_DATA without a second successful write.
 
-With sibling `zz0_client` and `zz0-pico-demo` checkouts, Zig 0.17.0, CMake and
+With sibling `zz0_client` and `zz0-pico-demo` checkouts, Zig 0.17.1, CMake and
 a C compiler, run from this repository on Linux:
 
 ```sh

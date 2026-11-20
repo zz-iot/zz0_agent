@@ -8,7 +8,7 @@ locally. The earlier built-in-startup hardware record remains separate.
 
 ## Build the host programs
 
-Use Zig 0.17.0. From `zz-dev`:
+Use Zig 0.17.1. From `zz-dev`:
 
 ```sh
 cd zz0_agent

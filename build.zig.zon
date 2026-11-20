@@ -2,7 +2,7 @@
     .name = .zz0_agent,
     .version = "0.0.0",
     .fingerprint = 0x0b06a44d9bdc4325,
-    .minimum_zig_version = "0.17.0",
+    .minimum_zig_version = "0.17.1",
     .dependencies = .{
         .zz0_client = .{
             .path = "../zz0_client",

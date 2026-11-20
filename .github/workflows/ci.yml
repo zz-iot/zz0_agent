@@ -31,7 +31,7 @@ jobs:
           path: zz0_client
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: '0.17.0'
+          version: '0.17.1'
       - name: Core tests without a Pico checkout
         working-directory: zz0_agent
         run: |
@@ -55,7 +55,7 @@ jobs:
           path: zz0_client
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: '0.17.0'
+          version: '0.17.1'
       - name: Independent project libraries and DDS receipt
         working-directory: zz0_agent
         run: |
@@ -86,7 +86,7 @@ jobs:
           path: zz0-pico-demo
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: '0.17.0'
+          version: '0.17.1'
       - name: CounterStatus and compatibility fixtures
         working-directory: zz0_agent
         run: |
