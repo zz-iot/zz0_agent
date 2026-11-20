@@ -7,7 +7,7 @@ an assertion of XRCE conformance.
 The implemented publishing path is documented in the
 [DDS backend plan](docs/dds-backend-plan.md). Shared resource construction,
 authoring and multi-provider bindings are now available in zzdds (through PR
-#113). The agent now pins zzdds 0.3.11 for incremental construction, explicit
+#113). The agent now pins zzdds 0.3.13 for incremental construction, explicit
 endpoint wire representation and handle retirement. Client cleanup is part of
 the real backend.
 

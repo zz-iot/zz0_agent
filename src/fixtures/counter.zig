@@ -6,7 +6,7 @@ const ReferenceCatalog = resources.ReferenceCatalog;
 const xrce = core.xrce;
 const demo = @import("zz0_client").demo;
 const counter_types = @import("counter_types");
-const zidl_rt = @import("zidl_rt");
+const zidl_cdr = @import("zidl_cdr");
 pub const CounterStatusStats = struct {
     decoded: u64 = 0,
     invalid: u64 = 0,
@@ -102,7 +102,7 @@ pub const Policy = struct {
         if (write.serialized_data.len > framed.len - 4) return error.PayloadTooLarge;
         @memcpy(framed[0..4], &[_]u8{ 0, 7, 0, 0 });
         @memcpy(framed[4..][0..write.serialized_data.len], write.serialized_data);
-        var reader = try zidl_rt.CdrReader.init(framed[0 .. write.serialized_data.len + 4]);
+        var reader = try zidl_cdr.CdrReader.init(framed[0 .. write.serialized_data.len + 4]);
         var sample: counter_types.CounterStatus = undefined;
         try counter_types.CounterStatus.deserializeInto(&sample, &reader, std.heap.page_allocator);
         if (reader.pos != reader.data.len) return error.TrailingSampleBytes;

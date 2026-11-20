@@ -7,11 +7,11 @@ See the [backend checkpoint](docs/real-dds-backend.md) for scope and qualificati
 
 ## Build and configure
 
-Use Zig 0.17.0 and a sibling `zz0_client` checkout. Normal builds and core tests
-need no Pico checkout or sample-type generation. The agent pins zzdds **0.3.11**,
-which supplies zidl **0.3.27** for configuration generation, runtime code and the
-loadable typesupport contract. CI pins client PR #2's merged commit,
-`9ffef195bcac18d4695ef5f7a9c58a5bf9beab85`.
+Use Zig 0.17.1 and a sibling `zz0_client` checkout. Normal builds and core tests
+need no Pico checkout or sample-type generation. The agent pins zzdds **0.3.13**,
+which supplies zidl **0.3.37** for configuration generation, the `zidl_cdr` and
+`zidl_bindings` runtime modules and the loadable typesupport contract. CI pins
+client PR #3's merged commit, `1458d23326f2e93e5190e5506b7f71c02a1441f5`.
 
 ```sh
 zig build

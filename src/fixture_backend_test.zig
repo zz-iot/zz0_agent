@@ -34,7 +34,7 @@ test "packet backend write acceptance survives optional telemetry failure and bo
     try testing.expectEqualSlices(u8, &writer, &status.related_request.object_id);
 }
 test "generated appendable nested and mutable fixtures use XTypes 1.3 headers" {
-    const rt = @import("zidl_rt");
+    const rt = @import("zidl_cdr");
     const F = @import("encoding_fixture");
     var bytes: std.ArrayList(u8) = .empty;
     defer bytes.deinit(testing.allocator);
@@ -60,7 +60,7 @@ test "appendable wire sample reaches generated decoder through the packet adapte
         fn write(ctx: *anyopaque, handle: B.Handle, bytes: []const u8) !void {
             const self: *Fake = @ptrCast(@alignCast(ctx));
             try testing.expect(self.live[handle.slot]);
-            var reader = try @import("zidl_rt").CdrReader.init(bytes);
+            var reader = try @import("zidl_cdr").CdrReader.init(bytes);
             var sample: @import("encoding_fixture").DelimitedProbe = undefined;
             try @import("encoding_fixture").DelimitedProbe.deserializeInto(&sample, &reader, testing.allocator);
             try testing.expectEqual(@as(u32, 42), sample.value);

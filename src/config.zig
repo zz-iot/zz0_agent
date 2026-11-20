@@ -1,7 +1,7 @@
 //! Offline startup configuration. No file access, native loading or DDS calls.
 //! Parsed and Resolved own their data independently; neither requires a stable address.
 const std = @import("std");
-const rt = @import("zidl_rt");
+const rt = @import("zidl_bindings");
 const schema = @import("agent_config_generated");
 const dds = @import("zzdds");
 const R = dds.resources;

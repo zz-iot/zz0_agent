@@ -89,7 +89,7 @@ failed create/delete and partial cleanup retries. Existing UDP and demo tests re
 part of `zig build test`; no new external dependency is required for this step.
 
 The selected binary CREATE and lifecycle codecs, managed session storage and real
-DDS backend are implemented with a published zzdds 0.3.11 dependency. Packet
+DDS backend are implemented with a published zzdds 0.3.13 dependency. Packet
 lifecycle tests and operator-reported Pico forwarding/recovery evidence are
 recorded in [the real backend checkpoint](real-dds-backend.md). General startup
 configuration and independent-vendor forwarding qualification remain. The

@@ -24,12 +24,12 @@ bindings. Generated appendable/mutable packet tests do not extend that library A
 The adapter is type-agnostic within the provider subset; CounterStatus appears only
 in explicit example inputs and the separate compatibility/test fixtures.
 
-The agent and Pico DDS consumer pin published zzdds **0.3.11**, including
+The agent and Pico DDS consumer pin published zzdds **0.3.13**, including
 incremental construction, explicit endpoint representation, provider ABI exports,
 and logical handle retirement. Generation, telemetry and provider callbacks all
-use its zidl **0.3.27** dependency, sharing one runtime module. A sibling zzdds
-checkout is no longer required. Hosted CI pins zz0_client PR #2's merged commit,
-`9ffef195bcac18d4695ef5f7a9c58a5bf9beab85`, for binary CREATE and lifecycle codecs.
+use its zidl **0.3.37** dependency through zzdds's `zidl_cdr` and `zidl_bindings`
+modules. A sibling zzdds checkout is no longer required. Hosted CI pins
+zz0_client PR #3's merged commit, `1458d23326f2e93e5190e5506b7f71c02a1441f5`.
 
 ## Sessions and cleanup
 
@@ -106,6 +106,9 @@ Configured-startup recheck (2026-11-11):
 
 Release-pin recheck (2026-11-09): agent and consumer use published zzdds 0.3.11
 and its zidl 0.3.27 dependency.
+Release-pin recheck (2026-11-20): agent and consumer use published zzdds 0.3.13
+and its zidl 0.3.37 dependency; zidl's former `zidl_rt` module is now `zidl_cdr`
+(codec) and `zidl_bindings` (authoring and owned-sequence helpers).
 
 - Debug/ReleaseSafe: 45 agent tests pass, including the exact Pico CREATE helper.
 - LLVM-backed ThreadSanitizer: all 45 tests pass with `-Dsanitize-thread=true`.

@@ -225,7 +225,7 @@ Do not count a host DDS smoke test as completed agent/hardware forwarding.
 ## Real adapter and managed sessions (2026-10-30)
 
 Items 2–3 are implemented: see [real backend evidence](real-dds-backend.md).
-The agent uses published zzdds 0.3.11 and one shared zidl 0.3.27 runtime. The
+The agent uses published zzdds 0.3.13 and its zidl 0.3.37 runtime modules. The
 `zidl_typesupport` module export supplies the ABI for generated providers. The
 configured executable forwards through DDS; the older compatibility fixture lives
 in `zz0_agent_compat` and retains `--validate-only`.

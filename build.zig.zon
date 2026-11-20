@@ -2,14 +2,14 @@
     .name = .zz0_agent,
     .version = "0.0.0",
     .fingerprint = 0x0b06a44d9bdc4325,
-    .minimum_zig_version = "0.17.0",
+    .minimum_zig_version = "0.17.1",
     .dependencies = .{
         .zz0_client = .{
             .path = "../zz0_client",
         },
         .zzdds = .{
-            .url = "https://github.com/zz-iot/zzdds/archive/refs/tags/v0.3.11-zig.0.17.0.tar.gz",
-            .hash = "zzdds-0.3.11-zig.0.17.0-sc7dmpqeUACXxN5BicLZDuCxAc8X8I0RH0VAvEyP66kV",
+            .url = "https://github.com/zz-iot/zzdds/archive/refs/tags/v0.3.13-zig.0.17.1.tar.gz",
+            .hash = "zzdds-0.3.13-zig.0.17.1-sc7dmodOVwDscznwm3wurHMFGSOepddIZX4s8aK51oFH",
         },
     },
     .paths = .{

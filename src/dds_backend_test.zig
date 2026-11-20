@@ -32,7 +32,7 @@ fn path(s: *root.udp.ClientSessions, peer: std.Io.net.IpAddress, sid: u8, domain
     try testing.expectEqual(X.StatusValue.ok, try exchange(s, peer, req[0..n]));
 }
 fn write(s: *root.udp.ClientSessions, peer: std.Io.net.IpAddress, sid: u8, counter: u32, board: []const u8) !X.StatusValue {
-    const rt = @import("zidl_rt");
+    const rt = @import("zidl_cdr");
     const T = @import("counter_types").CounterStatus;
     var bytes: std.ArrayList(u8) = .empty;
     defer bytes.deinit(testing.allocator);
@@ -83,7 +83,7 @@ test "real backend delivers checked samples for independent clients and preserve
         while (dds.takeRaw(data_reader)) |sample| {
             defer sample.deinit();
             if (!sample.info.valid_data) continue;
-            var r = try @import("zidl_rt").CdrReader.init(sample.data);
+            var r = try @import("zidl_cdr").CdrReader.init(sample.data);
             var value: @import("counter_types").CounterStatus = undefined;
             try @import("counter_types").CounterStatus.deserializeInto(&value, &r, testing.allocator);
             if (std.mem.eql(u8, value.board.slice(), "first")) got_first = true;
